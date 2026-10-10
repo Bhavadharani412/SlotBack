@@ -1,0 +1,46 @@
+# Secrets and environment
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Test and local data
+.test-data/
+*.sqlite3
+*.db
+logs/
+*.log
+
+# Frontend (Stitch UI will be integrated later)
+node_modules/
+frontend/dist/
+frontend/.vite/
+playwright-report/
+test-results/
+
+# Editors and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local generated reports / secrets
+reports/local/
