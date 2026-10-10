@@ -1,14 +1,14 @@
-from contextlib import asynccontextmanager
 import os
+from contextlib import asynccontextmanager
+
+import backend.app.models  # noqa: F401
+from backend.app.api.v1.endpoints import router as api_v1_router
+from backend.app.core.config import settings
+from backend.app.db.session import Base, engine
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-
-from backend.app.api.v1.endpoints import router as api_v1_router
-from backend.app.core.config import settings
-from backend.app.db.session import Base, engine
-import backend.app.models  # noqa: F401
 
 
 @asynccontextmanager
@@ -35,6 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/health", tags=["health"])
 def health_check() -> dict[str, str]:
     return {"status": "ok", "service": "slotback-api"}
@@ -57,4 +58,8 @@ async def serve_spa(request: Request, full_path: str):
     index_path = os.path.join(dist_dir, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    return {"message": "SlotBack API", "docs": "/docs", "detail": "Frontend dist build not found. Run 'npx pnpm build' inside frontend directory."}
+    return {
+        "message": "SlotBack API",
+        "docs": "/docs",
+        "detail": "Frontend dist build not found. Run 'npx pnpm build' inside frontend directory.",
+    }

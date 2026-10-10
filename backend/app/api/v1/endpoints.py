@@ -1,7 +1,3 @@
-from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.orm import Session
-
 from backend.app.db.session import get_db
 from backend.app.schemas.domain import (
     AppointmentCancel,
@@ -9,7 +5,6 @@ from backend.app.schemas.domain import (
     AppointmentOut,
     BusinessSettingBase,
     BusinessSettingOut,
-    MatchRecommendationOut,
     MetricsOut,
     NotificationLogOut,
     OfferAcceptResponse,
@@ -22,6 +17,8 @@ from backend.app.schemas.domain import (
     WaitlistOut,
 )
 from backend.app.services.recovery_service import SlotBackService
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -31,7 +28,7 @@ def get_service(db: Session = Depends(get_db)) -> SlotBackService:
 
 
 # ------------------ Services ------------------
-@router.get("/services", response_model=List[ServiceOut], tags=["services"])
+@router.get("/services", response_model=list[ServiceOut], tags=["services"])
 def list_services(
     active_only: bool = Query(False),
     service: SlotBackService = Depends(get_service),
@@ -39,7 +36,9 @@ def list_services(
     return service.get_services(active_only=active_only)
 
 
-@router.post("/services", response_model=ServiceOut, status_code=status.HTTP_201_CREATED, tags=["services"])
+@router.post(
+    "/services", response_model=ServiceOut, status_code=status.HTTP_201_CREATED, tags=["services"]
+)
 def create_service(
     payload: ServiceCreate,
     service: SlotBackService = Depends(get_service),
@@ -57,17 +56,24 @@ def update_service(
 
 
 # ------------------ Appointments ------------------
-@router.get("/appointments", response_model=List[AppointmentOut], tags=["appointments"])
+@router.get("/appointments", response_model=list[AppointmentOut], tags=["appointments"])
 def list_appointments(
-    date: Optional[str] = Query(None),
-    service_id: Optional[str] = Query(None),
-    status_filter: Optional[str] = Query(None, alias="status"),
+    date: str | None = Query(None),
+    service_id: str | None = Query(None),
+    status_filter: str | None = Query(None, alias="status"),
     service: SlotBackService = Depends(get_service),
 ):
-    return service.get_appointments(date_str=date, service_id=service_id, status_filter=status_filter)
+    return service.get_appointments(
+        date_str=date, service_id=service_id, status_filter=status_filter
+    )
 
 
-@router.post("/appointments", response_model=AppointmentOut, status_code=status.HTTP_201_CREATED, tags=["appointments"])
+@router.post(
+    "/appointments",
+    response_model=AppointmentOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["appointments"],
+)
 def create_appointment(
     payload: AppointmentCreate,
     service: SlotBackService = Depends(get_service),
@@ -75,7 +81,9 @@ def create_appointment(
     return service.create_appointment(payload)
 
 
-@router.post("/appointments/{appointment_id}/cancel", response_model=AppointmentOut, tags=["appointments"])
+@router.post(
+    "/appointments/{appointment_id}/cancel", response_model=AppointmentOut, tags=["appointments"]
+)
 def cancel_appointment(
     appointment_id: str,
     payload: AppointmentCancel,
@@ -85,15 +93,17 @@ def cancel_appointment(
 
 
 # ------------------ Waitlist ------------------
-@router.get("/waitlist", response_model=List[WaitlistOut], tags=["waitlist"])
+@router.get("/waitlist", response_model=list[WaitlistOut], tags=["waitlist"])
 def list_waitlist(
-    status_filter: Optional[str] = Query(None, alias="status"),
+    status_filter: str | None = Query(None, alias="status"),
     service: SlotBackService = Depends(get_service),
 ):
     return service.get_waitlist(status_filter=status_filter)
 
 
-@router.post("/waitlist", response_model=WaitlistOut, status_code=status.HTTP_201_CREATED, tags=["waitlist"])
+@router.post(
+    "/waitlist", response_model=WaitlistOut, status_code=status.HTTP_201_CREATED, tags=["waitlist"]
+)
 def create_waitlist_entry(
     payload: WaitlistCreate,
     service: SlotBackService = Depends(get_service),
@@ -110,12 +120,17 @@ def cancel_waitlist_entry(
 
 
 # ------------------ Slot Recovery & Offers ------------------
-@router.get("/recovery/offers", response_model=List[RecoveryOfferOut], tags=["recovery"])
+@router.get("/recovery/offers", response_model=list[RecoveryOfferOut], tags=["recovery"])
 def list_recovery_offers(service: SlotBackService = Depends(get_service)):
     return service.get_offers()
 
 
-@router.post("/recovery/offers", response_model=RecoveryOfferOut, status_code=status.HTTP_201_CREATED, tags=["recovery"])
+@router.post(
+    "/recovery/offers",
+    response_model=RecoveryOfferOut,
+    status_code=status.HTTP_201_CREATED,
+    tags=["recovery"],
+)
 def create_recovery_offer(
     payload: RecoveryOfferCreate,
     service: SlotBackService = Depends(get_service),
@@ -131,7 +146,9 @@ def get_recovery_offer(
     return service.get_offer_by_token(token_or_id)
 
 
-@router.post("/recovery/offers/{token_or_id}/accept", response_model=OfferAcceptResponse, tags=["recovery"])
+@router.post(
+    "/recovery/offers/{token_or_id}/accept", response_model=OfferAcceptResponse, tags=["recovery"]
+)
 def accept_recovery_offer(
     token_or_id: str,
     service: SlotBackService = Depends(get_service),
@@ -139,7 +156,9 @@ def accept_recovery_offer(
     return service.accept_offer(token_or_id)
 
 
-@router.post("/recovery/offers/{offer_id}/withdraw", response_model=RecoveryOfferOut, tags=["recovery"])
+@router.post(
+    "/recovery/offers/{offer_id}/withdraw", response_model=RecoveryOfferOut, tags=["recovery"]
+)
 def withdraw_recovery_offer(
     offer_id: str,
     service: SlotBackService = Depends(get_service),
@@ -147,7 +166,11 @@ def withdraw_recovery_offer(
     return service.withdraw_offer(offer_id)
 
 
-@router.post("/recovery/notifications/{notification_id}/retry", response_model=NotificationLogOut, tags=["recovery"])
+@router.post(
+    "/recovery/notifications/{notification_id}/retry",
+    response_model=NotificationLogOut,
+    tags=["recovery"],
+)
 def retry_notification(
     notification_id: str,
     service: SlotBackService = Depends(get_service),
