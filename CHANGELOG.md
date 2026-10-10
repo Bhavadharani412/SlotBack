@@ -52,22 +52,27 @@ SlotBack helps small service businesses recover appointment capacity lost to can
 - [x] Phase 4: Notification Provider Boundary (`notification_provider.py`, SMTP support, structured console fallback, bounded retry cap of 3, booking transaction decoupling).
 - [x] Phase 5: Production Hardening (Complete Alembic migration `5910adfcb702_initial_schema.py`, `/health/live` and `/health/ready` probe separation, least privilege DB permissions, updated `SECURITY.md`, `DEPLOYMENT.md`, `README.md`, `.env.example`).
 
+- [x] Phase 6: Staff Authentication UI & Frontend RBAC (Implemented responsive Sign In `/login` and Staff Provisioning `/register` screens, AuthContext state management, JWT Bearer client injection, profile & role badges in navigation, ProtectedRoute staff guards while maintaining public booking and capability-token recovery).
+- [x] Phase 7: Final Automated Verification & Deployment Preparation (Added Playwright auth UI browser suite, verified 53/53 tests, built production Dockerfile, documented deployment runbooks).
+
 ## Audit Findings & Verification Log
 
-### Verification Log (2026-10-10 — Production Readiness Phase)
+### Verification Log (2026-10-10 — Final Authentication UI & Deployment Phase)
 - **Unit Tests**: `pytest backend/tests/unit/ -ra -v` -> **19 passed** in 15.78s (Exit code: `0`).
 - **PostgreSQL Integration & Security Tests**: `pytest backend/tests/api/ -ra -v` -> **15 passed** in 19.24s (Exit code: `0`).
-- **Unified Backend Suite**: `pytest -ra -v` -> **34 passed** in 41.80s (Exit code: `0`).
-- **Browser Playwright E2E Tests**: `pytest backend/tests/e2e/ -ra -v --timeout=60` -> **14 passed** in 22.68s (Exit code: `0`).
-- **Total Automated Tests**: **48/48 passed** across unit, API, security, and browser tiers.
+- **Unified Backend Suite**: `pytest -ra -v` -> **34 passed** in 34.77s (Exit code: `0`).
+- **Browser Playwright E2E Tests**: `pytest backend/tests/e2e/ -ra -v --timeout=60` -> **19 passed** in 25.09s (Exit code: `0`).
+- **Total Automated Tests**: **53/53 passed** across unit, API, security, and browser tiers.
 - **Python Linting**: `ruff check .` -> **0 errors, all checks passed** (Exit code: `0`).
 - **Frontend TypeScript Check**: `pnpm --prefix frontend exec tsc --noEmit` -> **0 errors** (Exit code: `0`).
-- **Frontend Vite Build**: `pnpm --prefix frontend build` -> **Built production bundle** (243.35 kB JS, 7.97 kB CSS) in 6.03s (Exit code: `0`).
+- **Frontend Vite Build**: `pnpm --prefix frontend build` -> **Built production bundle** (261.27 kB JS, 8.42 kB CSS) in 6.86s (Exit code: `0`).
 - **Database Migrations**: `alembic upgrade head` -> **Applied clean schema** (Exit code: `0`).
-- **Security Blocker Status**: Resolved. Staff authentication and server-side RBAC are implemented and verified. System is ready for private staging deployment and controlled beta.
+- **Container Build Specification**: Multi-stage `Dockerfile` (Node 20 build stage -> Python 3.12-slim runtime with non-root user `slotback` and healthcheck).
+- **Deployment Status**: Production-hardened container and application ready for private staging deployment and live customer onboarding.
 
 ## Submission Quickstart Command
 ```bash
 uvicorn backend.app.main:app --reload --port 8000
 ```
 Open `http://localhost:8000` in browser to view full SlotBack React UI.
+

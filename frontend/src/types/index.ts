@@ -89,3 +89,13 @@ export interface OfferAcceptResponse {
   appointment: Appointment;
   offer: RecoveryOffer;
 }
+
+export interface User {
+  id: string;
+  email: string;
+  full_name: string;
+  role: 'admin' | 'staff';
+  business_id: string;
+  is_active: boolean;
+  created_at: string;
+}

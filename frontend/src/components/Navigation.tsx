@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Calendar,
@@ -10,8 +10,12 @@ import {
   Menu,
   X,
   ExternalLink,
-  Sparkles,
+  LogOut,
+  UserPlus,
+  Shield,
+  User as UserIcon,
 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 interface NavigationProps {
   activeOffersCount?: number;
@@ -19,6 +23,13 @@ interface NavigationProps {
 
 export const Navigation: React.FC<NavigationProps> = ({ activeOffersCount = 0 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { user, isAdmin, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const navItems = [
     { to: '/', label: 'Overview', icon: LayoutDashboard },
@@ -38,24 +49,67 @@ export const Navigation: React.FC<NavigationProps> = ({ activeOffersCount = 0 })
     <>
       {/* Persistent Desktop Sidebar */}
       <aside className={`sidebar ${mobileMenuOpen ? 'mobile-open' : ''}`}>
-        <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div
+          style={{
+            padding: '1.25rem 1.5rem',
+            borderBottom: '1px solid var(--border-color)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-            <div style={{ width: '32px', height: '32px', borderRadius: '8px', backgroundColor: 'var(--primary)', color: '#FFF', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+            <div
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '8px',
+                backgroundColor: 'var(--primary)',
+                color: '#FFF',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontWeight: 'bold',
+              }}
+            >
               SB
             </div>
             <div>
-              <span style={{ fontWeight: 700, fontSize: '1.125rem', color: 'var(--text-primary)', display: 'block', lineHeight: 1.2 }}>SlotBack</span>
+              <span
+                style={{
+                  fontWeight: 700,
+                  fontSize: '1.125rem',
+                  color: 'var(--text-primary)',
+                  display: 'block',
+                  lineHeight: 1.2,
+                }}
+              >
+                SlotBack
+              </span>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Staff Recovery Portal</span>
             </div>
           </div>
           {mobileMenuOpen && (
-            <button className="btn btn-ghost btn-sm" onClick={() => setMobileMenuOpen(false)} style={{ display: 'md-none' }}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setMobileMenuOpen(false)}
+              style={{ display: 'md-none' }}
+              aria-label="Close navigation menu"
+            >
               <X size={18} />
             </button>
           )}
         </div>
 
-        <nav style={{ padding: '1rem 0.75rem', flex: 1, display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        <nav
+          style={{
+            padding: '1rem 0.75rem',
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.25rem',
+          }}
+        >
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -64,9 +118,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeOffersCount = 0 })
                 to={item.to}
                 end={item.to === '/'}
                 onClick={() => setMobileMenuOpen(false)}
-                className={({ isActive }) =>
-                  `btn btn-ghost ${isActive ? 'active-nav' : ''}`
-                }
+                className={({ isActive }) => `btn btn-ghost ${isActive ? 'active-nav' : ''}`}
                 style={({ isActive }) => ({
                   justifyContent: 'flex-start',
                   padding: '0.625rem 0.875rem',
@@ -97,7 +149,86 @@ export const Navigation: React.FC<NavigationProps> = ({ activeOffersCount = 0 })
             );
           })}
 
-          <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+          {isAdmin && (
+            <NavLink
+              to="/register"
+              onClick={() => setMobileMenuOpen(false)}
+              className={({ isActive }) => `btn btn-ghost ${isActive ? 'active-nav' : ''}`}
+              style={({ isActive }) => ({
+                justifyContent: 'flex-start',
+                padding: '0.625rem 0.875rem',
+                borderRadius: 'var(--radius-md)',
+                backgroundColor: isActive ? 'var(--primary-light)' : 'transparent',
+                color: isActive ? 'var(--primary)' : 'var(--text-secondary)',
+                fontWeight: isActive ? 600 : 500,
+              })}
+            >
+              <UserPlus size={18} />
+              <span>Invite Staff</span>
+            </NavLink>
+          )}
+
+          <div
+            style={{
+              marginTop: 'auto',
+              paddingTop: '1rem',
+              borderTop: '1px solid var(--border-color)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}
+          >
+            {user && (
+              <div
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  backgroundColor: 'var(--canvas)',
+                  borderRadius: 'var(--radius-md)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div style={{ overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      fontSize: '0.8125rem',
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      whiteSpace: 'nowrap',
+                      textOverflow: 'ellipsis',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    {user.full_name}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Shield size={12} style={{ color: user.role === 'admin' ? 'var(--primary)' : 'var(--text-muted)' }} />
+                    <span
+                      style={{
+                        fontSize: '0.6875rem',
+                        fontWeight: 600,
+                        textTransform: 'uppercase',
+                        color: user.role === 'admin' ? 'var(--primary)' : 'var(--text-muted)',
+                      }}
+                    >
+                      {user.role}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleLogout}
+                  className="btn btn-ghost btn-sm"
+                  title="Sign out"
+                  aria-label="Sign out"
+                  style={{ color: 'var(--danger)', padding: '0.375rem' }}
+                >
+                  <LogOut size={16} />
+                </button>
+              </div>
+            )}
+
             <NavLink
               to="/book"
               target="_blank"
@@ -131,6 +262,35 @@ export const Navigation: React.FC<NavigationProps> = ({ activeOffersCount = 0 })
           <div style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
             {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
           </div>
+
+          {user && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div
+                style={{
+                  width: '28px',
+                  height: '28px',
+                  borderRadius: '50%',
+                  backgroundColor: 'var(--primary-light)',
+                  color: 'var(--primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                }}
+              >
+                {user.full_name.charAt(0)}
+              </div>
+              <button
+                onClick={handleLogout}
+                className="btn btn-ghost btn-sm"
+                style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+              >
+                <LogOut size={14} />
+                <span>Sign Out</span>
+              </button>
+            </div>
+          )}
         </div>
       </header>
     </>

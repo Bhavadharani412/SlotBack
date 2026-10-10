@@ -122,3 +122,31 @@ pg_restore -h <DB_HOST> -U slotback -d slotback --clean --if-exists -v "/var/bac
 5. **Rollback Procedure**:
    - If `/health/ready` fails or error rates increase, rollback traffic to the previous application artifact.
    - If schema downgrade is necessary and safe: `alembic downgrade -1`.
+
+---
+
+## 7. Container Deployment (Docker)
+
+SlotBack provides a multi-stage production `Dockerfile` that packages the compiled Vite React frontend and the Python FastAPI runtime into a single lightweight image running under a dedicated unprivileged user (`slotback`):
+
+```bash
+# Build the production container image
+docker build -t slotback:latest .
+
+# Run pre-flight database migrations
+docker run --rm \
+  -e DATABASE_URL="postgresql+psycopg://slotback:password@db.example.com:5432/slotback" \
+  slotback:latest alembic upgrade head
+
+# Run the production service
+docker run -d \
+  --name slotback-prod \
+  -p 8000:8000 \
+  -e APP_ENV="production" \
+  -e DEBUG="false" \
+  -e SECRET_KEY="generate-secure-64-character-random-hex-string-for-prod" \
+  -e DATABASE_URL="postgresql+psycopg://slotback:password@db.example.com:5432/slotback" \
+  -e CORS_ORIGINS="https://app.slotback.com" \
+  slotback:latest
+```
+

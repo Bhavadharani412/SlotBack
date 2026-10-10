@@ -6,6 +6,7 @@ import {
   OfferAcceptResponse,
   RecoveryOffer,
   Service,
+  User,
   WaitlistEntry,
 } from '../types';
 
@@ -112,8 +113,8 @@ export const api = {
     fetchJson('/settings', { method: 'PUT', body: JSON.stringify(data) }),
 
   // Auth
-  login: async (email: string, password: string): Promise<{ access_token: string; user: unknown }> => {
-    const res = await fetchJson<{ access_token: string; user: unknown }>('/auth/login', {
+  login: async (email: string, password: string): Promise<{ access_token: string; user: User }> => {
+    const res = await fetchJson<{ access_token: string; user: User }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
@@ -122,6 +123,17 @@ export const api = {
     }
     return res;
   },
+  getMe: (): Promise<User> => fetchJson('/auth/me'),
+  createStaffUser: (data: {
+    email: string;
+    password: string;
+    full_name: string;
+    role: 'admin' | 'staff';
+  }): Promise<User> =>
+    fetchJson('/auth/users', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   logout: () => {
     if (typeof window !== 'undefined') {
       localStorage.removeItem('slotback_token');

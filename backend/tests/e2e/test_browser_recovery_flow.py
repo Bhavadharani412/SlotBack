@@ -123,9 +123,10 @@ def seed_data(live_server_url: str):
 
 
 @pytest.fixture(autouse=True)
-def inject_staff_auth_token(page: Page, seed_data: dict):
-    token = seed_data["auth_token"]
-    page.add_init_script(f"localStorage.setItem('slotback_token', '{token}');")
+def inject_staff_auth_token(request, page: Page, seed_data: dict):
+    if "TestAuthenticationUI" not in request.node.nodeid:
+        token = seed_data["auth_token"]
+        page.add_init_script(f"localStorage.setItem('slotback_token', '{token}');")
 
 
 class TestStaffInterfaceSmoke:
@@ -280,3 +281,46 @@ class TestEmptyAndErrorStates:
         assert any(
             kw in body_text for kw in ["not found", "invalid", "error", "expired", "unavailable"]
         )
+
+
+class TestAuthenticationUI:
+    """E2E browser tests for staff sign-in, invalid credentials, sign-out, and public bypass."""
+
+    def test_unauthenticated_user_redirected_to_login(self, page: Page, live_server_url: str):
+        page.goto(live_server_url + "/appointments")
+        page.wait_for_url("**/login")
+        expect(page.get_by_role("heading", name="Staff Sign In")).to_be_visible()
+
+    def test_invalid_credentials_shows_error_alert(self, page: Page, live_server_url: str):
+        page.goto(live_server_url + "/login")
+        page.fill("#email-input", "admin@slotback.com")
+        page.fill("#password-input", "IncorrectPassword123!")
+        page.click("button[type='submit']")
+        expect(page.locator("[role='alert']")).to_be_visible()
+
+    def test_valid_credentials_signs_in_and_redirects(self, page: Page, live_server_url: str):
+        page.goto(live_server_url + "/login")
+        page.fill("#email-input", "admin@slotback.com")
+        page.fill("#password-input", "Admin@SlotBack2026!")
+        page.click("button[type='submit']")
+        page.wait_for_url(live_server_url + "/")
+        expect(page.get_by_role("heading", name="Staff Operational Dashboard")).to_be_visible()
+
+    def test_sign_out_clears_session_and_redirects_to_login(
+        self, page: Page, live_server_url: str, seed_data: dict
+    ):
+        token = seed_data["auth_token"]
+        page.add_init_script(f"localStorage.setItem('slotback_token', '{token}');")
+        page.goto(live_server_url + "/")
+        expect(page.locator(".sidebar")).to_be_visible()
+        # Click sign out button
+        page.locator("button[aria-label='Sign out']").first.click()
+        page.wait_for_url("**/login")
+        expect(page.get_by_role("heading", name="Staff Sign In")).to_be_visible()
+
+    def test_public_customer_booking_accessible_without_auth(
+        self, page: Page, live_server_url: str
+    ):
+        page.goto(live_server_url + "/book")
+        expect(page.get_by_role("heading", name="Book an Appointment")).to_be_visible()
+        assert "/book" in page.url
