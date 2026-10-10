@@ -2,6 +2,7 @@ import os
 import socket
 import threading
 import time
+from collections.abc import Generator
 
 import httpx
 import pytest
@@ -13,7 +14,7 @@ from backend.tests.conftest import get_test_database_url
 def get_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+        return int(s.getsockname()[1])
 
 
 class UvicornTestServer(uvicorn.Server):
@@ -45,7 +46,7 @@ class ServerThread(threading.Thread):
 
 
 @pytest.fixture(scope="session")
-def live_server_url() -> str:
+def live_server_url() -> Generator[str, None, None]:
     """
     Dedicated test server fixture for Playwright E2E tests.
     Guarantees that E2E tests always run against the isolated test database
