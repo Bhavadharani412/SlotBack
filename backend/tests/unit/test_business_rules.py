@@ -10,17 +10,16 @@ the SQLAlchemy session and verify pure business logic:
   - empty waitlist / no-eligible-customer cases
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional
-from unittest.mock import MagicMock, patch
-import pytest
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
+import pytest
 from backend.app.models.domain import Appointment, RecoveryOffer, WaitlistEntry
 from backend.app.services.recovery_service import SlotBackService
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def make_service(service_id: str = "svc-1", duration_minutes: int = 60) -> MagicMock:
@@ -36,15 +35,15 @@ def make_appointment(
     appointment_id: str = "appt-1",
     service_id: str = "svc-1",
     status: str = "cancelled",
-    start_time: Optional[datetime] = None,
-    cancelled_at: Optional[datetime] = None,
+    start_time: datetime | None = None,
+    cancelled_at: datetime | None = None,
 ) -> MagicMock:
     appt = MagicMock(spec=Appointment)
     appt.id = appointment_id
     appt.service_id = service_id
     appt.status = status
     appt.start_time = start_time or (utc_now() + timedelta(hours=2))
-    appt.end_time = (appt.start_time + timedelta(hours=1))
+    appt.end_time = appt.start_time + timedelta(hours=1)
     appt.cancelled_at = cancelled_at or utc_now()
     appt.customer_name = "Original Customer"
     appt.customer_email = "original@example.com"
@@ -57,8 +56,8 @@ def make_waitlist_entry(
     entry_id: str = "wl-1",
     service_id: str = "svc-1",
     status: str = "active",
-    preferred_start: Optional[datetime] = None,
-    preferred_end: Optional[datetime] = None,
+    preferred_start: datetime | None = None,
+    preferred_end: datetime | None = None,
 ) -> MagicMock:
     wl = MagicMock(spec=WaitlistEntry)
     wl.id = entry_id
@@ -78,8 +77,8 @@ def make_offer(
     appointment_id: str = "appt-1",
     waitlist_id: str = "wl-1",
     status: str = "sent",
-    expires_at: Optional[datetime] = None,
-    accepted_at: Optional[datetime] = None,
+    expires_at: datetime | None = None,
+    accepted_at: datetime | None = None,
 ) -> MagicMock:
     offer = MagicMock(spec=RecoveryOffer)
     offer.id = offer_id
@@ -100,13 +99,13 @@ def make_service_with_db(db: MagicMock) -> SlotBackService:
 # Tests: Waitlist eligibility matching
 # =====================================================================
 
+
 class TestWaitlistEligibility:
     """Tests for get_eligible_waitlist_for_appointment business logic."""
 
     def test_eligible_entry_matches_service_and_date_window(self):
         """An active waitlist entry with matching service and overlapping date window is eligible."""
         db = MagicMock()
-        svc = make_service()
         appointment = make_appointment(start_time=utc_now() + timedelta(hours=3))
         wl_entry = make_waitlist_entry(
             preferred_start=utc_now() - timedelta(hours=1),
@@ -147,6 +146,7 @@ class TestWaitlistEligibility:
 # =====================================================================
 # Tests: Offer expiration
 # =====================================================================
+
 
 class TestOfferExpiration:
     """Tests for offer expiration logic — offers should be marked expired when past deadline."""
@@ -222,6 +222,7 @@ class TestOfferExpiration:
 # Tests: Status transitions
 # =====================================================================
 
+
 class TestStatusTransitions:
     """Tests for valid/invalid status transition logic."""
 
@@ -239,8 +240,8 @@ class TestStatusTransitions:
 
     def test_create_offer_rejects_if_appointment_not_cancelled(self):
         """create_recovery_offer raises 400 if appointment is not in 'cancelled' state."""
-        from fastapi import HTTPException
         from backend.app.schemas.domain import RecoveryOfferCreate
+        from fastapi import HTTPException
 
         db = MagicMock()
         active_appointment = make_appointment(status="scheduled")
@@ -264,8 +265,8 @@ class TestStatusTransitions:
 
     def test_create_offer_rejects_if_waitlist_entry_not_eligible(self):
         """create_recovery_offer raises 400 if waitlist entry has status 'fulfilled'."""
-        from fastapi import HTTPException
         from backend.app.schemas.domain import RecoveryOfferCreate
+        from fastapi import HTTPException
 
         db = MagicMock()
         cancelled_appt = make_appointment(status="cancelled")
@@ -291,6 +292,65 @@ class TestStatusTransitions:
         assert exc_info.value.status_code == 400
         assert "not eligible" in exc_info.value.detail.lower()
 
+    def test_create_offer_rejects_service_mismatch(self):
+        """create_recovery_offer raises 400 if waitlist service does not match appointment service."""
+        from backend.app.schemas.domain import RecoveryOfferCreate
+        from fastapi import HTTPException
+
+        db = MagicMock()
+        cancelled_appt = make_appointment(status="cancelled", service_id="svc-A")
+        active_waitlist = make_waitlist_entry(status="active", service_id="svc-B")
+        db.get = MagicMock(side_effect=[cancelled_appt, active_waitlist])
+
+        service = make_service_with_db(db)
+        with pytest.raises(HTTPException) as exc_info:
+            service.create_recovery_offer(
+                RecoveryOfferCreate(
+                    appointment_id="appt-1",
+                    waitlist_id="wl-1",
+                    expiry_minutes=60,
+                )
+            )
+
+        assert exc_info.value.status_code == 400
+        assert "service mismatch" in exc_info.value.detail.lower()
+
+    def test_create_offer_rejects_outside_date_window(self):
+        """create_recovery_offer raises 400 if appointment time is outside customer's preferred date window."""
+        from backend.app.schemas.domain import RecoveryOfferCreate
+        from fastapi import HTTPException
+
+        db = MagicMock()
+        # Appointment is in 2 hours
+        cancelled_appt = make_appointment(
+            status="cancelled",
+            service_id="svc-1",
+            start_time=utc_now() + timedelta(hours=2),
+        )
+        # Waitlist entry wanted slots tomorrow only
+        active_waitlist = make_waitlist_entry(
+            status="active",
+            service_id="svc-1",
+            preferred_start=utc_now() + timedelta(days=1),
+            preferred_end=utc_now() + timedelta(days=2),
+        )
+        db.get = MagicMock(side_effect=[cancelled_appt, active_waitlist])
+
+        service = make_service_with_db(db)
+        with pytest.raises(HTTPException) as exc_info:
+            service.create_recovery_offer(
+                RecoveryOfferCreate(
+                    appointment_id="appt-1",
+                    waitlist_id="wl-1",
+                    expiry_minutes=60,
+                )
+            )
+
+        assert exc_info.value.status_code == 400
+        assert (
+            "outside" in exc_info.value.detail.lower() or "window" in exc_info.value.detail.lower()
+        )
+
     def test_withdraw_accepted_offer_raises_error(self):
         """Withdrawing an already-accepted offer raises 400."""
         from fastapi import HTTPException
@@ -310,6 +370,7 @@ class TestStatusTransitions:
 # =====================================================================
 # Tests: Recovery metric calculations
 # =====================================================================
+
 
 class TestMetricCalculations:
     """Tests for metric formula correctness using mocked scalar DB calls."""

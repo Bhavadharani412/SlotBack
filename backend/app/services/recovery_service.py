@@ -1,11 +1,6 @@
-from datetime import datetime, timedelta, timezone
 import statistics
-from typing import List, Optional
 import uuid
-
-from fastapi import HTTPException, status
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload
+from datetime import UTC, datetime, timedelta
 
 from backend.app.models.domain import (
     Appointment,
@@ -24,9 +19,13 @@ from backend.app.schemas.domain import (
     ServiceUpdate,
     WaitlistCreate,
 )
+from fastapi import HTTPException, status
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, joinedload
+
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class SlotBackService:
@@ -34,7 +33,7 @@ class SlotBackService:
         self.db = db
 
     # ------------------ Services ------------------
-    def get_services(self, active_only: bool = False) -> List[Service]:
+    def get_services(self, active_only: bool = False) -> list[Service]:
         stmt = select(Service)
         if active_only:
             stmt = stmt.where(Service.is_active.is_(True))
@@ -74,10 +73,10 @@ class SlotBackService:
     # ------------------ Appointments ------------------
     def get_appointments(
         self,
-        date_str: Optional[str] = None,
-        service_id: Optional[str] = None,
-        status_filter: Optional[str] = None,
-    ) -> List[Appointment]:
+        date_str: str | None = None,
+        service_id: str | None = None,
+        status_filter: str | None = None,
+    ) -> list[Appointment]:
         stmt = select(Appointment).options(joinedload(Appointment.service))
         if service_id:
             stmt = stmt.where(Appointment.service_id == service_id)
@@ -95,9 +94,9 @@ class SlotBackService:
         service = self.db.get(Service, data.service_id)
         if not service:
             raise HTTPException(status_code=404, detail="Service not found")
-        
+
         end_time = data.start_time + timedelta(minutes=service.duration_minutes)
-        
+
         # Check conflict
         conflict_stmt = select(Appointment).where(
             Appointment.service_id == data.service_id,
@@ -126,7 +125,7 @@ class SlotBackService:
         self.db.refresh(appointment)
         return appointment
 
-    def cancel_appointment(self, appointment_id: str, reason: Optional[str] = None) -> Appointment:
+    def cancel_appointment(self, appointment_id: str, reason: str | None = None) -> Appointment:
         appointment = self.db.get(Appointment, appointment_id)
         if not appointment:
             raise HTTPException(status_code=404, detail="Appointment not found")
@@ -136,7 +135,7 @@ class SlotBackService:
         appointment.status = "cancelled"
         appointment.cancellation_reason = reason
         appointment.cancelled_at = utc_now()
-        
+
         self.db.commit()
         self.db.refresh(appointment)
 
@@ -148,7 +147,7 @@ class SlotBackService:
         return appointment
 
     # ------------------ Waitlist ------------------
-    def get_waitlist(self, status_filter: Optional[str] = None) -> List[WaitlistEntry]:
+    def get_waitlist(self, status_filter: str | None = None) -> list[WaitlistEntry]:
         stmt = select(WaitlistEntry).options(joinedload(WaitlistEntry.service))
         if status_filter:
             stmt = stmt.where(WaitlistEntry.status == status_filter)
@@ -184,7 +183,7 @@ class SlotBackService:
         return entry
 
     # ------------------ Recovery & Offers ------------------
-    def get_offers(self) -> List[RecoveryOffer]:
+    def get_offers(self) -> list[RecoveryOffer]:
         stmt = (
             select(RecoveryOffer)
             .options(
@@ -217,7 +216,7 @@ class SlotBackService:
         offer = self.db.scalars(stmt).unique().first()
         if not offer:
             raise HTTPException(status_code=404, detail="Recovery offer not found")
-        
+
         # Check expiry
         now = utc_now()
         if offer.status in ["pending", "sent"] and offer.expires_at < now:
@@ -226,12 +225,12 @@ class SlotBackService:
             self.db.refresh(offer)
         return offer
 
-    def auto_issue_recovery_offer(self, appointment: Appointment) -> Optional[RecoveryOffer]:
+    def auto_issue_recovery_offer(self, appointment: Appointment) -> RecoveryOffer | None:
         # Find eligible waitlisted customers
         matches = self.get_eligible_waitlist_for_appointment(appointment)
         if not matches:
             return None
-        
+
         target_waitlist = matches[0]
         setting = self.get_or_create_settings()
         return self.create_recovery_offer(
@@ -242,22 +241,60 @@ class SlotBackService:
             )
         )
 
-    def get_eligible_waitlist_for_appointment(self, appointment: Appointment) -> List[WaitlistEntry]:
-        stmt = select(WaitlistEntry).where(
-            WaitlistEntry.service_id == appointment.service_id,
-            WaitlistEntry.status == "active",
-            WaitlistEntry.preferred_start_date <= appointment.start_time,
-            WaitlistEntry.preferred_end_date >= appointment.start_time,
-        ).order_by(WaitlistEntry.created_at.asc())
+    def get_eligible_waitlist_for_appointment(
+        self, appointment: Appointment
+    ) -> list[WaitlistEntry]:
+        stmt = (
+            select(WaitlistEntry)
+            .where(
+                WaitlistEntry.service_id == appointment.service_id,
+                WaitlistEntry.status == "active",
+                WaitlistEntry.preferred_start_date <= appointment.start_time,
+                WaitlistEntry.preferred_end_date >= appointment.start_time,
+            )
+            .order_by(WaitlistEntry.created_at.asc())
+        )
         return list(self.db.scalars(stmt).all())
 
     def create_recovery_offer(self, data: RecoveryOfferCreate) -> RecoveryOffer:
         appointment = self.db.get(Appointment, data.appointment_id)
         waitlist = self.db.get(WaitlistEntry, data.waitlist_id)
         if not appointment or appointment.status != "cancelled":
-            raise HTTPException(status_code=400, detail="Appointment must be cancelled to offer recovery.")
+            raise HTTPException(
+                status_code=400, detail="Appointment must be cancelled to offer recovery."
+            )
         if not waitlist or waitlist.status not in ["active", "offered"]:
             raise HTTPException(status_code=400, detail="Waitlist entry is not eligible.")
+
+        # Invariant: Customer must match the appointment service
+        if waitlist.service_id != appointment.service_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Waitlist customer is not eligible: service mismatch.",
+            )
+
+        # Invariant: Appointment time must fall within customer's preferred date window
+        appt_start = (
+            appointment.start_time
+            if appointment.start_time.tzinfo
+            else appointment.start_time.replace(tzinfo=UTC)
+        )
+        pref_start = (
+            waitlist.preferred_start_date
+            if waitlist.preferred_start_date.tzinfo
+            else waitlist.preferred_start_date.replace(tzinfo=UTC)
+        )
+        pref_end = (
+            waitlist.preferred_end_date
+            if waitlist.preferred_end_date.tzinfo
+            else waitlist.preferred_end_date.replace(tzinfo=UTC)
+        )
+
+        if appt_start < pref_start or appt_start > pref_end:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Waitlist customer is not eligible: appointment time is outside preferred window.",
+            )
 
         # Check existing active offer for this slot
         existing_offer = self.db.scalar(
@@ -268,12 +305,16 @@ class SlotBackService:
         )
         if existing_offer:
             if existing_offer.status == "accepted":
-                raise HTTPException(status_code=400, detail="Slot is already recovered and confirmed.")
+                raise HTTPException(
+                    status_code=400, detail="Slot is already recovered and confirmed."
+                )
             # If expired, mark as expired
             if existing_offer.expires_at < utc_now():
                 existing_offer.status = "expired"
             else:
-                raise HTTPException(status_code=400, detail="An active offer already exists for this slot.")
+                raise HTTPException(
+                    status_code=400, detail="An active offer already exists for this slot."
+                )
 
         expiry_mins = data.expiry_minutes or 60
         expires_at = utc_now() + timedelta(minutes=expiry_mins)
@@ -288,14 +329,18 @@ class SlotBackService:
             sent_at=utc_now(),
         )
         self.db.add(offer)
-        
+
         # Update waitlist status
         waitlist.status = "offered"
 
         # Record notification log
         notif_status = "failed" if data.simulate_notification_failure else "delivered"
-        error_msg = "SMTP delivery failure: Connection timed out" if data.simulate_notification_failure else None
-        
+        error_msg = (
+            "SMTP delivery failure: Connection timed out"
+            if data.simulate_notification_failure
+            else None
+        )
+
         notif_log = NotificationLog(
             recovery_offer=offer,
             recipient_email=waitlist.customer_email,
@@ -306,7 +351,7 @@ class SlotBackService:
             sent_at=utc_now(),
         )
         self.db.add(notif_log)
-        
+
         self.db.commit()
         self.db.refresh(offer)
         return offer
@@ -320,12 +365,16 @@ class SlotBackService:
         )
         if not offer:
             raise HTTPException(status_code=404, detail="Recovery offer not found.")
-        
+
         if offer.status == "accepted":
-            raise HTTPException(status_code=400, detail="This offer has already been accepted and confirmed.")
-        
+            raise HTTPException(
+                status_code=400, detail="This offer has already been accepted and confirmed."
+            )
+
         if offer.status in ["expired", "withdrawn"]:
-            raise HTTPException(status_code=400, detail=f"Offer is no longer valid (Status: {offer.status}).")
+            raise HTTPException(
+                status_code=400, detail=f"Offer is no longer valid (Status: {offer.status})."
+            )
 
         if offer.expires_at < utc_now():
             offer.status = "expired"
@@ -373,12 +422,12 @@ class SlotBackService:
             raise HTTPException(status_code=404, detail="Offer not found")
         if offer.status == "accepted":
             raise HTTPException(status_code=400, detail="Cannot withdraw an already accepted offer")
-        
+
         offer.status = "withdrawn"
         waitlist = self.db.get(WaitlistEntry, offer.waitlist_id)
         if waitlist and waitlist.status == "offered":
             waitlist.status = "active"
-        
+
         self.db.commit()
         self.db.refresh(offer)
         return offer
@@ -387,12 +436,12 @@ class SlotBackService:
         log = self.db.get(NotificationLog, notification_id)
         if not log:
             raise HTTPException(status_code=404, detail="Notification log not found")
-        
+
         log.retry_count += 1
         log.status = "delivered"
         log.error_message = None
         log.sent_at = utc_now()
-        
+
         # If offer was pending/sent, update sent timestamp
         offer = self.db.get(RecoveryOffer, log.offer_id)
         if offer and offer.status == "pending":
@@ -406,16 +455,22 @@ class SlotBackService:
     # ------------------ Metrics & Reports ------------------
     def get_metrics(self) -> MetricsOut:
         # Eligible cancellations: appointments marked as cancelled or that were cancelled and recovered
-        eligible_cancellations = self.db.scalar(
-            select(func.count(Appointment.id)).where(
-                (Appointment.status == "cancelled") | (Appointment.cancelled_at.is_not(None))
+        eligible_cancellations = (
+            self.db.scalar(
+                select(func.count(Appointment.id)).where(
+                    (Appointment.status == "cancelled") | (Appointment.cancelled_at.is_not(None))
+                )
             )
-        ) or 0
+            or 0
+        )
 
         # Recovered appointments: offers accepted
-        recovered_appointments = self.db.scalar(
-            select(func.count(RecoveryOffer.id)).where(RecoveryOffer.status == "accepted")
-        ) or 0
+        recovered_appointments = (
+            self.db.scalar(
+                select(func.count(RecoveryOffer.id)).where(RecoveryOffer.status == "accepted")
+            )
+            or 0
+        )
 
         recovery_rate = (
             round((recovered_appointments / eligible_cancellations) * 100.0, 1)
@@ -437,14 +492,17 @@ class SlotBackService:
                 diff = (o.accepted_at - o.appointment.cancelled_at).total_seconds() / 60.0
                 if diff >= 0:
                     durations.append(diff)
-        
+
         median_time = round(statistics.median(durations), 1) if durations else None
 
         # Notification failure rate
         total_notifications = self.db.scalar(select(func.count(NotificationLog.id))) or 0
-        failed_notifications = self.db.scalar(
-            select(func.count(NotificationLog.id)).where(NotificationLog.status == "failed")
-        ) or 0
+        failed_notifications = (
+            self.db.scalar(
+                select(func.count(NotificationLog.id)).where(NotificationLog.status == "failed")
+            )
+            or 0
+        )
 
         notif_fail_rate = (
             round((failed_notifications / total_notifications) * 100.0, 1)
@@ -453,17 +511,23 @@ class SlotBackService:
         )
 
         # Active waitlist count
-        total_active_waitlist = self.db.scalar(
-            select(func.count(WaitlistEntry.id)).where(WaitlistEntry.status == "active")
-        ) or 0
+        total_active_waitlist = (
+            self.db.scalar(
+                select(func.count(WaitlistEntry.id)).where(WaitlistEntry.status == "active")
+            )
+            or 0
+        )
 
         # Active offers count
-        active_offers_count = self.db.scalar(
-            select(func.count(RecoveryOffer.id)).where(
-                RecoveryOffer.status.in_(["pending", "sent"]),
-                RecoveryOffer.expires_at > utc_now(),
+        active_offers_count = (
+            self.db.scalar(
+                select(func.count(RecoveryOffer.id)).where(
+                    RecoveryOffer.status.in_(["pending", "sent"]),
+                    RecoveryOffer.expires_at > utc_now(),
+                )
             )
-        ) or 0
+            or 0
+        )
 
         return MetricsOut(
             eligible_cancellations=eligible_cancellations,
