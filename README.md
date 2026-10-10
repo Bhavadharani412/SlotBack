@@ -1,291 +1,355 @@
-# SlotBack
+# SlotBack — Appointment Cancellation Recovery
 
-> **Appointment cancellation-recovery for small service businesses.**
->
-> When a booking is cancelled, SlotBack automatically matches the freed slot to the most eligible waitlisted customer, sends them a time-limited acceptance offer, and confirms exactly one replacement booking — preventing lost revenue from no-shows and cancellations.
+**Recover cancelled appointments. Reduce unused capacity. Turn waitlists into completed bookings.**
 
----
+SlotBack is a full-stack appointment recovery system designed for small service businesses. When a customer cancels an appointment, SlotBack helps staff identify eligible waitlisted customers, issue time-limited recovery offers, and refill released appointment slots.
 
-## Table of Contents
+Instead of treating cancellations as lost capacity, SlotBack provides a structured workflow for matching customers, managing offers, tracking recovery outcomes, and monitoring operational performance.
 
-- [Problem & Value Proposition](#problem--value-proposition)
-- [Target Users](#target-users)
-- [Implemented Features vs Simulated / Incomplete](#implemented-features-vs-simulated--incomplete)
-- [Screens & Their Purpose](#screens--their-purpose)
-- [Full Recovery Flow](#full-recovery-flow)
-- [Architecture](#architecture)
-- [Repository Structure](#repository-structure)
-- [Prerequisites & Setup](#prerequisites--setup)
-- [Running Locally](#running-locally)
-- [Testing](#testing)
-- [Demo Data Policy](#demo-data-policy)
-- [Security Limitations & Known Issues](#security-limitations--known-issues)
-- [Deployment Status](#deployment-status)
-- [Configuration Reference](#configuration-reference)
-- [Detailed Documentation](#detailed-documentation)
+## Problem
 
----
+Appointment cancellations create unexpected gaps in business schedules. Manually contacting waitlisted customers is time-consuming, inconsistent, and difficult to track.
 
-## Problem & Value Proposition
+SlotBack addresses this by connecting appointment management, waitlist matching, recovery offers, and reporting in one application.
 
-Small service businesses (salons, physio clinics, massage studios) lose revenue every time an appointment is cancelled. A waitlisted customer who would have taken that slot often goes uncontacted.
+## Features
 
-SlotBack provides a lightweight staff portal where:
-- Released slots are automatically matched to eligible waitlist customers.
-- A unique, expiring acceptance link is issued per match.
-- The first customer to accept gets the booking; duplicate acceptances are rejected.
-- Staff can monitor offer states, retry failed notifications, and view recovery metrics.
+- **Appointment management** — Create, view, and cancel appointments.
+- **Waitlist management** — Maintain customer preferences and service requirements.
+- **Automated recovery matching** — Match cancelled slots with eligible waitlist entries.
+- **Manual recovery matching** — Allow staff to initiate recovery offers.
+- **Time-limited offers** — Generate unique offer tokens with expiry rules.
+- **Safe offer acceptance** — Validate offer status and prevent duplicate acceptance.
+- **Operational dashboard** — Track cancellations, active offers, and recovery metrics.
+- **Recovery reporting** — Measure recovered appointments, recovery rates, and time to refill.
+- **Notification tracking** — Record notification outcomes and failures.
+- **Business settings** — Configure automatic matching and offer-expiry behavior.
 
----
+## Technology Stack
 
-## Target Users
-
-| Role | Interface |
-|---|---|
-| **Staff** | `/` (staff portal, all pages except `/book` and `/offer/:token`) |
-| **Customer (booking)** | `/book` — browse services and book an appointment |
-| **Customer (offer)** | `/offer/:token` — view and accept a recovery offer |
-
----
-
-## Implemented Features vs Simulated / Incomplete
-
-### ✅ Implemented and working
-- Appointment creation with conflict detection (409 for overlapping bookings)
-- Appointment cancellation with reason recording
-- Waitlist management (add, cancel, filter entries)
-- Auto-matching: on cancellation, the oldest eligible waitlist entry receives an offer
-- Manual offer issuance from the Slot Recovery page
-- Offer acceptance with row-level locking (`SELECT … FOR UPDATE`) — only one acceptance confirmed
-- Duplicate acceptance rejection (400 with clear message)
-- Offer expiry enforcement — offers past their deadline cannot be accepted
-- Offer withdrawal by staff
-- Notification logging per offer (simulated delivery — see below)
-- Notification retry endpoint
-- Recovery metrics (cancellations, recoveries, rate, median time to refill, notification failure rate)
-- Staff portal (Overview, Appointments, Waitlist, Slot Recovery, Reports, Settings)
-- Customer booking page (`/book`)
-- Customer offer page (`/offer/:token`)
-- PostgreSQL integration with Alembic migrations
-- Isolated test database (`slotback_test`) with safety guard against dev DB contamination
-- GitHub Actions CI (backend linting, migration validation, tests; frontend TypeScript check and build)
-
-### ⚠️ Simulated / Not production-ready
-- **Notification delivery is simulated** — no real SMTP or messaging provider is integrated. The `simulate_notification_failure` toggle is a staff testing aid. Notification logs record "delivered" without any real email being sent.
-- **No staff authentication or authorization** — all staff endpoints are publicly accessible. This is a **release blocker** before production deployment.
-- **No production deployment** — the app is not deployed to any public URL. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the deployment plan.
-
----
-
-## Screens & Their Purpose
-
-| Screen | URL | Purpose |
+| Layer | Technology | Responsibility |
 |---|---|---|
-| **Overview** | `/` | Workload snapshot: urgent cancellations, active offers, notification failures, key metrics |
-| **Appointments** | `/appointments` | Full appointment list with search, filter by status/service, book new, cancel |
-| **Waitlist** | `/waitlist` | Add/remove waitlisted customers, view eligibility windows |
-| **Slot Recovery** | `/recovery` | Released slots awaiting offers, issue/withdraw offers, retry notifications, offer state table |
-| **Reports** | `/reports` | Recovery rate, median time to refill, notification failure rate — computed from DB |
-| **Settings** | `/settings` | Business settings, default offer expiry, auto-match toggle, service management |
-| **Customer Booking** | `/book` | Public booking page: browse services, submit appointment request |
-| **Customer Offer** | `/offer/:token` | Accept or view a recovery offer; shows expiry countdown; duplicate acceptance is rejected |
-
----
-
-## Full Recovery Flow
-
-```
-[Staff/Customer] books appointment → Appointment created (status: scheduled)
-       ↓
-[Staff] cancels appointment → status: cancelled, cancellation_reason + cancelled_at recorded
-       ↓
-[Auto-match] OR [Staff Manual Match]
-  → Oldest active waitlist entry for same service + overlapping preferred window selected
-  → RecoveryOffer created (status: sent, unique token, expiry timestamp)
-  → NotificationLog recorded (simulated: "delivered" or "failed" if simulate_notification_failure)
-       ↓
-[Customer] opens /offer/<token>
-  → Expiry checked; expired offers return 400
-       ↓
-[Customer] clicks Accept
-  → SELECT … FOR UPDATE on offer + appointment rows
-  → Status and expiry re-validated atomically
-  → appointment.customer_name/email/phone updated to waitlist customer
-  → appointment.status = "scheduled", appointment.is_recovery = True
-  → offer.status = "accepted", waitlist_entry.status = "fulfilled"
-  → All committed in one transaction
-       ↓
-[Second acceptance attempt] → 400 "already been accepted"
-       ↓
-[Reports] eligible_cancellations, recovered_appointments, recovery_rate computed from DB
-```
-
----
+| Frontend | React, TypeScript | User interface and application state |
+| Build tooling | Vite | Development server and production builds |
+| Routing | React Router | Staff and customer-facing routes |
+| Styling | CSS | Responsive layouts and reusable visual styles |
+| Backend | Python, FastAPI | REST API and request handling |
+| Validation | Pydantic v2 | Request and response schemas |
+| Business logic | SlotBackService | Appointment, waitlist, and recovery rules |
+| ORM | SQLAlchemy 2.x | Database access and transactions |
+| Database | PostgreSQL | Persistent application data |
+| Migrations | Alembic | Version-controlled schema changes |
+| Testing | Pytest, Vitest, Playwright | Backend, frontend, and browser-level verification |
 
 ## Architecture
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for full component diagram and concurrency details.
+SlotBack follows a three-tier architecture with a separate frontend, backend API, and relational database. Business rules are centralized in a service layer rather than embedded in frontend components or API handlers.
 
-**Summary:**
-
+```text
+┌──────────────────────────────────────┐
+│           Presentation Layer         │
+│                                      │
+│       React + TypeScript + Vite      │
+│            React Router              │
+│                                      │
+│   Staff Portal     Customer Pages    │
+└───────────────────┬──────────────────┘
+                    │
+                    │ HTTP / JSON
+                    ▼
+┌──────────────────────────────────────┐
+│             API Layer                │
+│                                      │
+│              FastAPI                 │
+│          /api/v1 endpoints            │
+│                                      │
+│   Request validation and responses   │
+└───────────────────┬──────────────────┘
+                    │
+                    ▼
+┌──────────────────────────────────────┐
+│           Service Layer              │
+│                                      │
+│           SlotBackService             │
+│                                      │
+│   Appointment and waitlist rules     │
+│   Recovery matching and offer logic  │
+│   Status transitions and metrics     │
+└───────────────────┬──────────────────┘
+                    │
+                    │ SQLAlchemy
+                    ▼
+┌──────────────────────────────────────┐
+│             Data Layer               │
+│                                      │
+│              PostgreSQL              │
+│                                      │
+│ Services · Appointments · Waitlist   │
+│ Offers · Notification Logs · Settings│
+│                                      │
+│        Alembic schema migrations     │
+└──────────────────────────────────────┘
 ```
-React (Vite) ──── HTTP/JSON ──── FastAPI (/api/v1) ──── SlotBackService ──── SQLAlchemy 2.x ──── PostgreSQL
-                                     │
-                                  Alembic (migrations)
+
+### Frontend
+
+The React frontend is responsible for rendering pages, collecting user input, managing navigation, and displaying API responses.
+
+The application separates reusable UI components from page-specific functionality.
+
+| Component | Responsibility |
+|---|---|
+| `App.tsx` | Route definitions and staff layout |
+| `api/client.ts` | Centralized HTTP communication with the backend |
+| `components/` | Navigation, modals, status badges, loading states, and empty states |
+| `pages/OverviewPage.tsx` | Dashboard and operational metrics |
+| `pages/AppointmentsPage.tsx` | Appointment operations |
+| `pages/WaitlistPage.tsx` | Waitlist management |
+| `pages/RecoveryPage.tsx` | Recovery offers and matching workflow |
+| `pages/ReportsPage.tsx` | Recovery reporting |
+| `pages/SettingsPage.tsx` | Business configuration |
+| `pages/CustomerBookingPage.tsx` | Customer booking interface |
+| `pages/CustomerOfferPage.tsx` | Customer recovery-offer acceptance |
+| `types/index.ts` | Shared TypeScript types |
+| `index.css` | Design tokens, layouts, tables, forms, and responsive styles |
+
+The staff portal and customer-facing pages share the frontend application but use separate routes.
+
+### Backend
+
+The FastAPI backend exposes HTTP endpoints and coordinates application operations. Its service layer contains the core domain rules, keeping endpoint handlers focused on request validation, delegation, and responses.
+
+| Module | Responsibility |
+|---|---|
+| `backend/app/main.py` | Application initialization, middleware, and frontend serving configuration |
+| `backend/app/api/v1/endpoints.py` | Versioned API endpoints |
+| `backend/app/services/recovery_service.py` | Appointment, waitlist, recovery, settings, and reporting logic |
+| `backend/app/models/domain.py` | SQLAlchemy database models |
+| `backend/app/schemas/domain.py` | Pydantic request and response schemas |
+| `backend/app/db/session.py` | Database engine and session management |
+| `backend/app/core/config.py` | Environment-based application configuration |
+
+### Database
+
+PostgreSQL is the authoritative data store. SQLAlchemy maps application entities to relational tables, while Alembic manages database schema migrations.
+
+| Entity | Purpose |
+|---|---|
+| `services` | Service definitions and durations |
+| `appointments` | Customer bookings, cancellation details, and recovery status |
+| `waitlist_entries` | Customer preferences and waitlist state |
+| `recovery_offers` | Offer tokens, expiry, acceptance, and status |
+| `notification_logs` | Notification delivery outcomes and retry information |
+| `business_settings` | Automatic matching and default offer-expiry settings |
+
+Related state changes are handled transactionally so appointment, offer, and waitlist records remain consistent.
+
+## How Frontend and Backend Communicate
+
+The frontend communicates with FastAPI through HTTP requests and JSON responses.
+
+```text
+User interaction
+      │
+      ▼
+React page or component
+      │
+      ▼
+api/client.ts
+      │
+      ▼
+FastAPI endpoint
+      │
+      ▼
+Pydantic validation
+      │
+      ▼
+SlotBackService
+      │
+      ▼
+SQLAlchemy session
+      │
+      ▼
+PostgreSQL
+      │
+      ▼
+JSON response
+      │
+      ▼
+React updates the interface
 ```
 
-- **Frontend** (`frontend/src/`): React + TypeScript + Vite, plain CSS (`index.css`), React Router. Fetches all data from the API — no mock arrays or hardcoded records in production code.
-- **Backend** (`backend/app/`): FastAPI routers (thin), `SlotBackService` (all business logic), SQLAlchemy models, Alembic migrations.
-- **Database**: PostgreSQL. `slotback` for development, `slotback_test` for tests.
+During local development, Vite proxies `/api` requests to the FastAPI server running on port `8000`. The frontend development server runs on port `5173`.
 
----
+FastAPI also exposes interactive API documentation at `/docs`.
+
+## Core Workflow: Cancellation to Recovery
+
+The main business workflow is designed to refill a released appointment slot without relying on unrestricted manual coordination.
+
+1. **Cancellation:** A staff member cancels an appointment. The cancellation status, timestamp, and reason are recorded.
+2. **Eligibility matching:** If automatic matching is enabled, the service searches for active waitlist entries matching the service and preferred appointment window.
+3. **Offer creation:** The eligible customer receives a recovery offer with a unique token and expiry timestamp.
+4. **Customer response:** The customer opens the offer page and accepts before the offer expires.
+5. **Transactional confirmation:** The backend locks the relevant offer and appointment records, revalidates their states, and applies the related changes in a database transaction.
+6. **State synchronization:** The appointment is reassigned, the offer is marked accepted, and the waitlist entry is fulfilled.
+7. **Reporting:** Recovery metrics are derived from persisted application data.
+
+### Recovery Integrity
+
+Offer acceptance is a critical operation because two requests could attempt to claim the same appointment.
+
+SlotBack uses database row locking (`SELECT ... FOR UPDATE`) and transactional validation to reduce race conditions. The backend rechecks the offer status and expiry before committing the changes, preventing an already accepted or expired offer from being accepted again.
+
+The frontend improves usability, but the backend remains responsible for enforcing business rules and maintaining data integrity.
 
 ## Repository Structure
 
-```
+```text
 SlotBack/
 ├── backend/
 │   ├── app/
-│   │   ├── api/v1/endpoints.py      # Thin FastAPI router
-│   │   ├── core/config.py           # Settings from env vars
-│   │   ├── db/session.py            # SQLAlchemy engine + Base
-│   │   ├── models/domain.py         # ORM models
-│   │   ├── schemas/domain.py        # Pydantic v2 schemas
-│   │   ├── services/recovery_service.py  # All business logic
-│   │   └── main.py                  # App factory, CORS, SPA serving
+│   │   ├── api/v1/
+│   │   ├── core/
+│   │   ├── db/
+│   │   ├── models/
+│   │   ├── schemas/
+│   │   ├── services/
+│   │   └── main.py
 │   └── tests/
-│       ├── conftest.py              # Isolated test DB setup + safety guard
-│       ├── unit/                    # Pure business rule tests (no DB)
-│       │   └── test_business_rules.py
-│       ├── api/                     # HTTP integration tests (PostgreSQL)
-│       │   ├── test_recovery_flow.py
-│       │   └── test_e2e_critical_path.py
-│       └── e2e/                     # Playwright browser tests
-│           └── test_browser_recovery_flow.py
+│       ├── unit/
+│       ├── api/
+│       └── e2e/
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/                   # OverviewPage, AppointmentsPage, etc.
-│   │   ├── components/              # Navigation, Modal, StatusBadge, etc.
-│   │   ├── api/client.ts            # API client
-│   │   └── index.css                # Design system (CSS variables + utilities)
+│   │   ├── api/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── types/
+│   │   ├── App.tsx
+│   │   └── index.css
 │   ├── package.json
-│   └── pnpm-lock.yaml
-├── migrations/                      # Alembic migration scripts
-├── scripts/setup_postgres.py        # Local DB provisioning (dev only)
+│   └── vite.config.ts
 ├── docs/
 │   ├── ARCHITECTURE.md
 │   ├── TESTING.md
 │   ├── METRICS.md
 │   ├── DEPLOYMENT.md
 │   └── PROJECT_OVERVIEW.md
-├── .github/workflows/ci.yml         # GitHub Actions CI
-├── .env.example                     # Env var template (no real secrets)
+├── .github/workflows/
 ├── alembic.ini
-├── pyproject.toml
 ├── requirements.txt
-└── requirements-dev.txt
+├── requirements-dev.txt
+├── .env.example
+└── README.md
 ```
 
----
+## Getting Started
 
-## Prerequisites & Setup
+### Prerequisites
 
-| Tool | Version | Notes |
-|---|---|---|
-| Python | 3.12+ | Required |
-| PostgreSQL | 14+ | Running locally or via Docker |
-| Node.js | 20+ | For frontend build |
-| pnpm | 9+ | Package manager (use `npm i -g pnpm` or `npx pnpm`) |
+- Python 3.12+
+- PostgreSQL 14+
+- Node.js 20+
+- pnpm 9+
 
-**1. Environment variables**
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/Bhavadharani412/SlotBack.git
+cd SlotBack
+```
+
+### 2. Configure environment variables
+
+Create a local environment file from the example:
+
+**Windows PowerShell**
 
 ```powershell
-copy .env.example .env
+Copy-Item .env.example .env
 ```
 
-Edit `.env` with your local values. **Never commit `.env`.**
+Configure the required values in `.env`:
 
-```ini
-# .env.example (no real secrets — safe to commit)
+```dotenv
 APP_NAME=SlotBack
 APP_ENV=development
 DEBUG=true
 API_V1_PREFIX=/api/v1
-DATABASE_URL=postgresql+psycopg://slotback:slotback_dev_password@localhost:5432/slotback
-TEST_DATABASE_URL=postgresql+psycopg://slotback:slotback_dev_password@localhost:5432/slotback_test
+
+DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5432/slotback
+TEST_DATABASE_URL=postgresql+psycopg://USER:PASSWORD@localhost:5432/slotback_test
+
 CORS_ORIGINS=http://localhost:5173
 LOG_LEVEL=INFO
 ```
 
-**2. Database provisioning (first time only)**
+Replace the database credentials with your local PostgreSQL configuration. Create the development and test databases before running the application.
 
-```powershell
-# Requires postgres superuser access — dev only
-python scripts/setup_postgres.py
-```
+**Never commit `.env` or production credentials.**
 
-This creates the `slotback` role (non-superuser), `slotback` database, and `slotback_test` database.
-
-**3. Python virtual environment**
+### 3. Install backend dependencies
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt -r requirements-dev.txt
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt -r requirements-dev.txt
 ```
 
----
-
-## Running Locally
-
-**Backend (API + serves built frontend):**
+### 4. Apply database migrations
 
 ```powershell
 alembic upgrade head
-.venv\Scripts\uvicorn backend.app.main:app --reload --port 8000
 ```
 
-Open:
-- `http://localhost:8000` — Staff portal
-- `http://localhost:8000/book` — Customer booking page
-- `http://localhost:8000/docs` — OpenAPI interactive docs
-
-**Frontend dev server (hot-reload):**
+### 5. Start the backend
 
 ```powershell
-pnpm --prefix frontend install --frozen-lockfile
-pnpm --prefix frontend dev
+uvicorn backend.app.main:app --reload --port 8000
 ```
 
-Opens at `http://localhost:5173` (proxies `/api` to port 8000).
+The API should be available at:
 
-**Build frontend for production:**
+- Application health: `http://localhost:8000/health`
+- Interactive API documentation: `http://localhost:8000/docs`
+
+### 6. Start the frontend
+
+Open another terminal:
 
 ```powershell
-pnpm --prefix frontend build
+pnpm --dir frontend install
+pnpm --dir frontend dev
 ```
 
----
+Open `http://localhost:5173` in your browser.
+
+### 7. Build the frontend
+
+```powershell
+pnpm --dir frontend build
+```
+
+The production build is generated in `frontend/dist`. When configured for production, the FastAPI application can serve the built frontend alongside the API.
 
 ## Testing
 
-See [docs/TESTING.md](docs/TESTING.md) for full test category descriptions, isolation guarantees, and actual results.
+SlotBack separates business-rule tests, API integration tests, and browser-level end-to-end tests.
 
-### Backend unit tests (no database)
+### Backend unit tests
 
 ```powershell
 pytest backend/tests/unit/ -ra -v
 ```
 
-17 tests covering: waitlist eligibility, offer expiration, status transitions, metric calculations, empty cases.
-
-### Backend integration/API tests (requires PostgreSQL `slotback_test`)
+### API integration tests
 
 ```powershell
-# Set TEST_DATABASE_URL in .env (must not point to slotback dev database)
 pytest backend/tests/api/ -ra -v
 ```
 
-3 tests covering: full cancellation→recovery→acceptance flow, duplicate rejection, notification failure and retry.
+These tests require a correctly configured, separate PostgreSQL test database.
 
 ### Full backend suite
 
@@ -293,101 +357,49 @@ pytest backend/tests/api/ -ra -v
 pytest -ra -v
 ```
 
-**Last run result: 20/20 passed** (17 unit + 3 API integration).
-
-### Frontend TypeScript check and build
+### Frontend type-check and build
 
 ```powershell
-pnpm --prefix frontend exec tsc --noEmit
-pnpm --prefix frontend build
+pnpm --dir frontend exec tsc --noEmit
+pnpm --dir frontend build
 ```
 
-Both pass with no errors.
+### Browser end-to-end tests
 
-### Browser E2E tests (Playwright — requires running backend)
+With the backend running and Playwright's browser installed:
 
 ```powershell
-# Start backend first: uvicorn backend.app.main:app --port 8000
-playwright install chromium
 pytest backend/tests/e2e/ -ra -v
 ```
 
-14 tests covering: staff page smoke, mobile hamburger toggle, recovery page at 380px, offer acceptance flow, duplicate rejection, invalid token error state.
+The browser suite covers critical application interactions, including recovery flows and offer acceptance.
 
-**Status:** Tests are written and collected. Run against live server — see [docs/TESTING.md](docs/TESTING.md) for current results.
+See [docs/TESTING.md](docs/TESTING.md) for test isolation, coverage by scenario, and verification results. Test outcomes should be recorded from actual runs rather than inferred from the presence of test files.
 
-### CI
+## Engineering Principles
 
-GitHub Actions workflow: `.github/workflows/ci.yml`
-- **backend job**: PostgreSQL service, ruff lint, Alembic migration validation, pytest
-- **frontend job**: pnpm frozen install, tsc, vite build
-- **e2e job**: runs after backend+frontend, Playwright chromium tests
+- **Separation of concerns:** UI, API handlers, business logic, and persistence have distinct responsibilities.
+- **Data integrity:** Related recovery operations use transactions and database-level locking where needed.
+- **Backend validation:** Client-side validation improves usability but does not replace server-side checks.
+- **Explicit persistence:** PostgreSQL is the authoritative database; SQLite is not a silent fallback.
+- **Reproducible schema changes:** Database changes are managed through Alembic migrations.
+- **Test isolation:** Automated tests use a separate database to protect development data.
+- **Configuration hygiene:** Secrets and environment-specific settings stay outside committed source code.
 
-**Status:** Workflow is committed and configured. Remote run not yet verified (no GitHub push performed).
+## Documentation
 
----
+- [Architecture](docs/ARCHITECTURE.md)
+- [Testing](docs/TESTING.md)
+- [Metrics](docs/METRICS.md)
+- [Deployment](docs/DEPLOYMENT.md)
+- [Project Overview](docs/PROJECT_OVERVIEW.md)
 
-## Demo Data Policy
+## Project Status
 
-- **No seed script** — the app does not populate demo data automatically.
-- **No mock arrays in frontend** — all pages fetch from the API. An empty database renders empty states, not fake data.
-- **Test fixtures** (in `conftest.py` and individual test files) create records in `slotback_test`, not the development database. The safety guard in `conftest.py` raises `RuntimeError` if tests would run against `slotback`.
-- **Notification "delivery"** is simulated — the `NotificationLog.status` field records `delivered` or `failed` based on the toggle, but no real email is sent. This is clearly labeled in the UI and code.
+SlotBack is being developed as an operational tool for appointment cancellation recovery. Its core design focuses on waitlist eligibility, offer expiry, transactional acceptance, and measurable recovery outcomes.
 
----
+Production readiness depends on verifying deployment configuration, migrations, authorization, and real notification delivery in the target environment. Notification logs and simulated delivery outcomes should not be interpreted as proof of successful real-world email delivery.
 
-## Security Limitations & Known Issues
+## License
 
-> [!CAUTION]
-> **Not production-ready.** The following blockers must be resolved before any public deployment.
-
-| Issue | Severity | Status |
-|---|---|---|
-| **No staff authentication** — all `/api/v1` endpoints (except `/offer/:token` and `/book`) are publicly accessible | 🔴 Release blocker | Not implemented |
-| **Simulated notifications** — no real email delivery | 🟡 Feature gap | Documented, labeled |
-| `allow_origins: ["*"]` fallback in CORS when `CORS_ORIGINS` is empty | 🟡 Configuration risk | Must set `CORS_ORIGINS` in production |
-| `DEBUG=true` must be `false` in production | 🟡 Configuration | Set via env var |
-| No HTTPS enforcement in app code | 🟡 Infrastructure | Use reverse proxy (nginx/caddy) |
-| Staff endpoint authorization (per-business tenant isolation) | 🔴 Future feature | Not scoped |
-
----
-
-## Deployment Status
-
-**Not deployed.** No public URL exists.
-
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the deployment plan covering Railway/Render + managed PostgreSQL, required env vars, migration steps, health check, and security prerequisites.
-
-**Blocking before any production deployment:**
-1. Implement staff authentication (e.g., simple API key or OAuth).
-2. Set `CORS_ORIGINS` to the exact frontend domain.
-3. Set `DEBUG=false` and `APP_ENV=production`.
-4. Verify `alembic upgrade head` on a fresh production database.
-5. Confirm CI passes on the remote repository.
-
----
-
-## Configuration Reference
-
-All configuration is through environment variables (no config files with secrets):
-
-| Variable | Required | Description |
-|---|---|---|
-| `DATABASE_URL` | ✅ | PostgreSQL connection string (`postgresql+psycopg://...`) |
-| `TEST_DATABASE_URL` | Tests | Separate test DB; safety guard prevents using main DB |
-| `APP_NAME` | | Defaults to `SlotBack` |
-| `APP_ENV` | | `development` / `test` / `production` |
-| `DEBUG` | | `true` only in development |
-| `API_V1_PREFIX` | | Defaults to `/api/v1` |
-| `CORS_ORIGINS` | | Comma-separated origins; use exact domains in production |
-| `LOG_LEVEL` | | `DEBUG` / `INFO` / `WARNING` / `ERROR` |
-
----
-
-## Detailed Documentation
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Component diagram, API flow, domain rules, concurrency
-- [docs/TESTING.md](docs/TESTING.md) — Test categories, isolation, commands, coverage, results, known gaps
-- [docs/METRICS.md](docs/METRICS.md) — Metric definitions, formulas, source tables, limitations
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — Prerequisites, env vars, DB provisioning, steps, rollback
-- [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md) — Product scope and roadmap
+Add a license file and specify the license here before distributing the project for reuse.
