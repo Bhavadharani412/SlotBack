@@ -73,12 +73,12 @@ export const OverviewPage: React.FC = () => {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+      <div className="page-header">
         <div>
           <h1>Staff Operational Dashboard</h1>
           <p>Monitor released slot recovery, active waitlists, and notification health.</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div className="page-header-actions">
           <button className="btn btn-secondary" onClick={loadData}>
             <RefreshCw size={16} /> Refresh
           </button>

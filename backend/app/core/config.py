@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
     database_url: str
+    test_database_url: str = ""
     cors_origins: str = "http://localhost:5173"
     log_level: str = "INFO"
 

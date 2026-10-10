@@ -405,9 +405,11 @@ class SlotBackService:
 
     # ------------------ Metrics & Reports ------------------
     def get_metrics(self) -> MetricsOut:
-        # Eligible cancellations: appointments marked as cancelled
+        # Eligible cancellations: appointments marked as cancelled or that were cancelled and recovered
         eligible_cancellations = self.db.scalar(
-            select(func.count(Appointment.id)).where(Appointment.status == "cancelled")
+            select(func.count(Appointment.id)).where(
+                (Appointment.status == "cancelled") | (Appointment.cancelled_at.is_not(None))
+            )
         ) or 0
 
         # Recovered appointments: offers accepted

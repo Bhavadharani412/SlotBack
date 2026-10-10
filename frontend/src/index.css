@@ -63,7 +63,23 @@ body {
   min-height: 100vh;
 }
 
-.mobile-only-menu { display: none; }
+.mobile-only-menu { display: none !important; }
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
 
 .page-body > div > div:first-child {
   flex-wrap: wrap;
@@ -108,9 +124,13 @@ body {
     margin-left: 0;
     padding: 0 1rem;
   }
-  .mobile-only-menu { display: inline-flex; }
-  .page-body { padding: 1.25rem 1rem; }
+  .mobile-only-menu { display: inline-flex !important; }
+  .page-body { padding: 1.25rem 0.875rem; }
   .filter-bar > div > * { width: 100% !important; max-width: none; }
+  .page-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 
 .topbar {

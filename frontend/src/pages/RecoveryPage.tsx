@@ -74,7 +74,6 @@ export const RecoveryPage: React.FC = () => {
         appointment_id: selectedAppointmentId,
         waitlist_id: selectedWaitlistId,
         expiry_minutes: 60,
-        simulate_notification_failure: simulateFailure,
       });
       setIssueModalOpen(false);
       loadData();
@@ -109,14 +108,37 @@ export const RecoveryPage: React.FC = () => {
     (app) => !offers.some((o) => o.appointment_id === app.id && o.status !== 'withdrawn' && o.status !== 'expired')
   );
 
+  // Determine eligible waitlist for selected appointment
+  const selectedAppointment = cancelledAppointments.find(a => a.id === selectedAppointmentId);
+  const eligibleWaitlist = activeWaitlist.filter(w => {
+    if (!selectedAppointment) return false;
+    if (w.service_id !== selectedAppointment.service_id) return false;
+    const prefStart = new Date(w.preferred_start_date).getTime();
+    const prefEnd = new Date(w.preferred_end_date).getTime();
+    const apptStart = new Date(selectedAppointment.start_time).getTime();
+    return prefStart <= apptStart && prefEnd >= apptStart;
+  });
+
+  // Keep selected waitlist ID in sync when selected appointment changes
+  useEffect(() => {
+    if (eligibleWaitlist.length > 0) {
+      if (!eligibleWaitlist.some(w => w.id === selectedWaitlistId)) {
+        setSelectedWaitlistId(eligibleWaitlist[0].id);
+      }
+    } else {
+      setSelectedWaitlistId('');
+    }
+  }, [selectedAppointmentId, eligibleWaitlist, selectedWaitlistId]);
+
+
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+      <div className="page-header">
         <div>
           <h1>Slot Recovery & Offer Management</h1>
           <p>Match released cancelled slots to waitlisted customers and monitor real-time offer states.</p>
         </div>
-        <div style={{ display: 'flex', gap: '0.75rem' }}>
+        <div className="page-header-actions">
           <button className="btn btn-secondary" onClick={loadData}>
             <RefreshCw size={16} /> Refresh
           </button>
@@ -192,7 +214,7 @@ export const RecoveryPage: React.FC = () => {
                       <th>Offer Expiry</th>
                       <th>Status</th>
                       <th>Notification Delivery</th>
-                      <th>Actions</th>
+                      <th style={{ minWidth: '150px', whiteSpace: 'nowrap' }}>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -243,8 +265,8 @@ export const RecoveryPage: React.FC = () => {
                               <span className="text-muted">Pending Log</span>
                             )}
                           </td>
-                          <td>
-                            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <td style={{ minWidth: '150px', whiteSpace: 'nowrap' }}>
+                            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'nowrap' }}>
                               <a
                                 href={`/offer/${offer.token}`}
                                 target="_blank"
@@ -317,30 +339,25 @@ export const RecoveryPage: React.FC = () => {
 
           <div className="form-group">
             <label className="form-label">Select Eligible Waitlisted Customer *</label>
-            <select
-              className="form-select"
-              required
-              value={selectedWaitlistId}
-              onChange={(e) => setSelectedWaitlistId(e.target.value)}
-            >
-              {activeWaitlist.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.customer_name} ({w.customer_email}) — Requested: {w.service?.name || 'Any'}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '1rem' }}>
-            <input
-              type="checkbox"
-              id="simFail"
-              checked={simulateFailure}
-              onChange={(e) => setSimulateFailure(e.target.checked)}
-            />
-            <label htmlFor="simFail" style={{ fontSize: '0.875rem', cursor: 'pointer' }}>
-              Simulate notification delivery failure (for staff testing & error recovery verification)
-            </label>
+            {eligibleWaitlist.length > 0 ? (
+              <select
+                className="form-select"
+                required
+                value={selectedWaitlistId}
+                onChange={(e) => setSelectedWaitlistId(e.target.value)}
+              >
+                {eligibleWaitlist.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.customer_name} ({w.customer_email}) — Requested: {w.service?.name || 'Any'}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="alert alert-warning" style={{ marginTop: '0.5rem' }}>
+                <AlertTriangle size={16} />
+                <span>No eligible customers found for this service and time window. They may be booked or none match.</span>
+              </div>
+            )}
           </div>
         </form>
       </Modal>

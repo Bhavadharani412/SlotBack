@@ -136,14 +136,16 @@ export const AppointmentsPage: React.FC = () => {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+      <div className="page-header">
         <div>
           <h1>Appointments Directory</h1>
           <p>Schedule, manage, and cancel customer appointment bookings.</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setCreateModalOpen(true)}>
-          <Plus size={16} /> New Booking
-        </button>
+        <div className="page-header-actions">
+          <button className="btn btn-primary" onClick={() => setCreateModalOpen(true)}>
+            <Plus size={16} /> New Booking
+          </button>
+        </div>
       </div>
 
       {/* Filter Bar */}
