@@ -1,14 +1,13 @@
-from datetime import datetime, timedelta, timezone
-import pytest
-from fastapi.testclient import TestClient
+from datetime import UTC, datetime, timedelta
 
 from backend.app.main import app
+from fastapi.testclient import TestClient
 
 client = TestClient(app)
 
 
 def iso_time(minutes: int = 0) -> str:
-    return (datetime.now(timezone.utc) + timedelta(minutes=minutes)).isoformat()
+    return (datetime.now(UTC) + timedelta(minutes=minutes)).isoformat()
 
 
 def test_complete_8_step_critical_e2e_workflow():
@@ -44,7 +43,6 @@ def test_complete_8_step_critical_e2e_workflow():
         },
     )
     assert wl_res.status_code == 201
-    waitlist_id = wl_res.json()["id"]
 
     # Staff books appointment for Original Customer
     book_res = client.post(
@@ -178,7 +176,14 @@ def test_complete_8_step_critical_e2e_workflow():
     assert fail_offer_res.status_code == 201
 
     all_offers = client.get("/api/v1/recovery/offers").json()
-    failed_offer = next((o for o in all_offers if any(n["status"] == "failed" for n in o.get("notification_logs", []))), None)
+    failed_offer = next(
+        (
+            o
+            for o in all_offers
+            if any(n["status"] == "failed" for n in o.get("notification_logs", []))
+        ),
+        None,
+    )
     assert failed_offer is not None
     failed_log = next(n for n in failed_offer["notification_logs"] if n["status"] == "failed")
 

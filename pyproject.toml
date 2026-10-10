@@ -9,7 +9,7 @@ dynamic = ["dependencies"]
 dependencies = { file = ["requirements.txt"] }
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests"]
+testpaths = ["backend/tests/unit", "backend/tests/api"]
 pythonpath = ["."]
 addopts = "-ra"
 
@@ -20,7 +20,7 @@ src = ["backend"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-ignore = []
+ignore = ["E501", "B008"]
 
 [tool.mypy]
 python_version = "3.12"

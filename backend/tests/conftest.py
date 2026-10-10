@@ -1,13 +1,13 @@
 import os
 from urllib.parse import urlsplit, urlunsplit
-import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
 
+import backend.app.models  # noqa: F401
+import pytest
 from backend.app.core.config import settings
 from backend.app.db.session import Base, get_db
 from backend.app.main import app
-import backend.app.models  # noqa: F401
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
 
 
 def get_test_database_url() -> str:
@@ -16,7 +16,9 @@ def get_test_database_url() -> str:
         dev_url = settings.database_url
         parts = urlsplit(dev_url)
         # Replace only the database name path, keeping the username and password intact
-        new_path = "/slotback_test" if parts.path in ("/slotback", "", "/") else parts.path + "_test"
+        new_path = (
+            "/slotback_test" if parts.path in ("/slotback", "", "/") else parts.path + "_test"
+        )
         url = urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
 
     # Invariant: Never allow tests to run against the main development database
@@ -63,8 +65,13 @@ def setup_test_db():
 
 
 @pytest.fixture(autouse=True)
-def clean_test_tables():
+def clean_test_tables(request):
     """Clean all tables before each test to ensure test isolation."""
+    # Skip function-level wiping for e2e browser tests which manage their own module-level state
+    if "e2e" in request.node.nodeid:
+        yield
+        return
+
     with TestingSessionLocal() as session:
         # Clean in reverse foreign key order
         session.execute(text("DELETE FROM notification_logs"))
