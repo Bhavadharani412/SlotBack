@@ -3,9 +3,13 @@ from urllib.parse import urlsplit, urlunsplit
 
 import backend.app.models  # noqa: F401
 import pytest
+from backend.app.core.auth import ensure_initial_admin
 from backend.app.core.config import settings
+from backend.app.core.rate_limit import limiter
+from backend.app.core.security import create_access_token, hash_password
 from backend.app.db.session import Base, get_db
 from backend.app.main import app
+from backend.app.models.domain import User
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
@@ -15,7 +19,6 @@ def get_test_database_url() -> str:
     if not url:
         dev_url = settings.database_url
         parts = urlsplit(dev_url)
-        # Replace only the database name path, keeping the username and password intact
         new_path = (
             "/slotback_test" if parts.path in ("/slotback", "", "/") else parts.path + "_test"
         )
@@ -67,6 +70,9 @@ def setup_test_db():
 @pytest.fixture(autouse=True)
 def clean_test_tables(request):
     """Clean all tables before each test to ensure test isolation."""
+    # Reset rate limiter
+    limiter.reset()
+
     # Skip function-level wiping for e2e browser tests which manage their own module-level state
     if "e2e" in request.node.nodeid:
         yield
@@ -80,5 +86,65 @@ def clean_test_tables(request):
         session.execute(text("DELETE FROM appointments"))
         session.execute(text("DELETE FROM services"))
         session.execute(text("DELETE FROM business_settings"))
+        session.execute(text("DELETE FROM users"))
         session.commit()
+
+        # Seed initial admin user for tests
+        ensure_initial_admin(session)
+
     yield
+
+
+@pytest.fixture
+def admin_token() -> str:
+    """Return a valid JWT access token for the test admin user."""
+    with TestingSessionLocal() as session:
+        admin = session.query(User).filter(User.email == settings.initial_admin_email).first()
+        if not admin:
+            admin = ensure_initial_admin(session)
+        assert admin is not None
+        return create_access_token(
+            data={
+                "sub": admin.id,
+                "email": admin.email,
+                "role": admin.role,
+                "business_id": admin.business_id,
+            }
+        )
+
+
+@pytest.fixture
+def admin_headers(admin_token: str) -> dict[str, str]:
+    """HTTP headers with admin Authorization Bearer token."""
+    return {"Authorization": f"Bearer {admin_token}"}
+
+
+@pytest.fixture
+def staff_token() -> str:
+    """Create and return a valid JWT access token for a non-admin staff member."""
+    with TestingSessionLocal() as session:
+        staff_user = User(
+            email="staff.test@slotback.com",
+            hashed_password=hash_password("StaffPass123!"),
+            full_name="Regular Staff",
+            role="staff",
+            business_id="1",
+            is_active=True,
+        )
+        session.add(staff_user)
+        session.commit()
+        session.refresh(staff_user)
+        return create_access_token(
+            data={
+                "sub": staff_user.id,
+                "email": staff_user.email,
+                "role": staff_user.role,
+                "business_id": staff_user.business_id,
+            }
+        )
+
+
+@pytest.fixture
+def staff_headers(staff_token: str) -> dict[str, str]:
+    """HTTP headers with staff Authorization Bearer token."""
+    return {"Authorization": f"Bearer {staff_token}"}

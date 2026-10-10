@@ -46,20 +46,25 @@ SlotBack helps small service businesses recover appointment capacity lost to can
 - [x] Enforce backend eligibility validation on `create_recovery_offer` (rejects service mismatch & date window violations).
 - [x] Fix Playwright E2E database isolation via dedicated ephemeral test server fixture targeting test database (`slotback_test` / `slotback_e2e`).
 - [x] Add regression tests for manipulated direct requests, timezone handling, and overlapping appointment conflicts.
-- [x] Run separate unit, integration/API, and browser E2E suites with verified pass counts.
-- [x] Confirm staff authentication blocker in documentation before public release.
+- [x] Phase 1: Security, Architecture & Reliability Audit (`docs/AUDIT_REPORT.md` with findings AUD-01 through AUD-10).
+- [x] Phase 2: Staff Authentication & RBAC (PBKDF2-HMAC-SHA256, JWT Bearer tokens, `admin` vs `staff` authorization, sliding-window rate limiting on login/booking/acceptance, fail-safe production config validation).
+- [x] Phase 3: Automated Security & Regression Suite (`test_security_auth.py` with 9 tests covering 401 anonymous, 403 RBAC, token expiration, rate limiting 429, production guards, health probes, bounded retries).
+- [x] Phase 4: Notification Provider Boundary (`notification_provider.py`, SMTP support, structured console fallback, bounded retry cap of 3, booking transaction decoupling).
+- [x] Phase 5: Production Hardening (Complete Alembic migration `5910adfcb702_initial_schema.py`, `/health/live` and `/health/ready` probe separation, least privilege DB permissions, updated `SECURITY.md`, `DEPLOYMENT.md`, `README.md`, `.env.example`).
 
 ## Audit Findings & Verification Log
 
-### Verification Log (2026-10-10)
-- **Unit Tests**: `pytest backend/tests/unit/ -ra -v` -> **19 passed** in 0.61s (Exit code: `0`).
-- **PostgreSQL Integration/API Tests**: `pytest backend/tests/api/ -ra -v` -> **6 passed** in 1.97s (Exit code: `0`).
-- **Browser Playwright E2E Tests**: `pytest backend/tests/e2e/ -ra -v` -> **14 passed** in 23.93s (Exit code: `0`).
+### Verification Log (2026-10-10 — Production Readiness Phase)
+- **Unit Tests**: `pytest backend/tests/unit/ -ra -v` -> **19 passed** in 15.78s (Exit code: `0`).
+- **PostgreSQL Integration & Security Tests**: `pytest backend/tests/api/ -ra -v` -> **15 passed** in 19.24s (Exit code: `0`).
+- **Unified Backend Suite**: `pytest -ra -v` -> **34 passed** in 41.80s (Exit code: `0`).
+- **Browser Playwright E2E Tests**: `pytest backend/tests/e2e/ -ra -v --timeout=60` -> **14 passed** in 22.68s (Exit code: `0`).
+- **Total Automated Tests**: **48/48 passed** across unit, API, security, and browser tiers.
 - **Python Linting**: `ruff check .` -> **0 errors, all checks passed** (Exit code: `0`).
 - **Frontend TypeScript Check**: `pnpm --prefix frontend exec tsc --noEmit` -> **0 errors** (Exit code: `0`).
-- **Frontend Vite Build**: `pnpm --prefix frontend build` -> **Built production bundle** (242.97 kB JS, 7.97 kB CSS) in 6.47s (Exit code: `0`).
-- **GitHub CI**: CI workflow `.github/workflows/ci.yml` verified for backend lint/migrate/test, frontend build, and e2e Playwright jobs. (`gh` CLI not available locally to query remote CI).
-- **Security Blocker**: Confirmed staff authentication remains absent across `/api/v1/*`. Public deployment blocked.
+- **Frontend Vite Build**: `pnpm --prefix frontend build` -> **Built production bundle** (243.35 kB JS, 7.97 kB CSS) in 6.03s (Exit code: `0`).
+- **Database Migrations**: `alembic upgrade head` -> **Applied clean schema** (Exit code: `0`).
+- **Security Blocker Status**: Resolved. Staff authentication and server-side RBAC are implemented and verified. System is ready for private staging deployment and controlled beta.
 
 ## Submission Quickstart Command
 ```bash

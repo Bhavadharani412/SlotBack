@@ -31,7 +31,6 @@ def seed_data(live_server_url: str):
     """
     import httpx
 
-    # Clean isolated test database tables before running module tests
     with TestingSessionLocal() as session:
         session.execute(text("DELETE FROM notification_logs"))
         session.execute(text("DELETE FROM recovery_offers"))
@@ -39,18 +38,30 @@ def seed_data(live_server_url: str):
         session.execute(text("DELETE FROM appointments"))
         session.execute(text("DELETE FROM services"))
         session.execute(text("DELETE FROM business_settings"))
+        session.execute(text("DELETE FROM users"))
         session.commit()
+        from backend.app.core.auth import ensure_initial_admin
+        ensure_initial_admin(session)
 
     api = f"{live_server_url}/api/v1"
 
+    # Authenticate to obtain token for staff API calls
+    login_res = httpx.post(
+        f"{api}/auth/login",
+        json={"email": "admin@slotback.com", "password": "Admin@SlotBack2026!"},
+    )
+    auth_token = login_res.json()["access_token"]
+    auth_headers = {"Authorization": f"Bearer {auth_token}"}
+
     # Ensure settings have auto_match enabled
-    settings = httpx.get(f"{api}/settings").json()
+    settings = httpx.get(f"{api}/settings", headers=auth_headers).json()
     settings["auto_match_waitlist"] = True
-    httpx.put(f"{api}/settings", json=settings)
+    httpx.put(f"{api}/settings", headers=auth_headers, json=settings)
 
     # Create service
     svc = httpx.post(
         f"{api}/services",
+        headers=auth_headers,
         json={
             "name": "E2E Test Service",
             "description": "For Playwright E2E",
@@ -88,10 +99,14 @@ def seed_data(live_server_url: str):
     appointment_id = appt["id"]
 
     # Cancel appointment — triggers auto-recovery offer
-    httpx.post(f"{api}/appointments/{appointment_id}/cancel", json={"reason": "E2E test cancel"})
+    httpx.post(
+        f"{api}/appointments/{appointment_id}/cancel",
+        headers=auth_headers,
+        json={"reason": "E2E test cancel"},
+    )
 
     # Fetch the offer token
-    offers = httpx.get(f"{api}/recovery/offers").json()
+    offers = httpx.get(f"{api}/recovery/offers", headers=auth_headers).json()
     offer = next((o for o in offers if o["appointment_id"] == appointment_id), None)
     assert offer is not None, "Expected auto-recovery offer was not created"
     offer_token = offer["token"]
@@ -103,7 +118,14 @@ def seed_data(live_server_url: str):
         "appointment_id": appointment_id,
         "offer_token": offer_token,
         "offer_id": offer_id,
+        "auth_token": auth_token,
     }
+
+
+@pytest.fixture(autouse=True)
+def inject_staff_auth_token(page: Page, seed_data: dict):
+    token = seed_data["auth_token"]
+    page.add_init_script(f"localStorage.setItem('slotback_token', '{token}');")
 
 
 class TestStaffInterfaceSmoke:

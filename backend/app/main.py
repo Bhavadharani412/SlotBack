@@ -3,18 +3,28 @@ from contextlib import asynccontextmanager
 
 import backend.app.models  # noqa: F401
 from backend.app.api.v1.endpoints import router as api_v1_router
+from backend.app.core.auth import ensure_initial_admin
 from backend.app.core.config import settings
-from backend.app.db.session import Base, engine
-from fastapi import FastAPI, Request
+from backend.app.db.session import Base, SessionLocal, engine
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Ensure database schema exists on startup
+    # Enforce production security invariants
+    settings.validate_production_configuration()
+
+    # Ensure database schema exists
     Base.metadata.create_all(bind=engine)
+
+    # Seed initial staff administrator if no users exist
+    with SessionLocal() as session:
+        ensure_initial_admin(session)
+
     yield
 
 
@@ -23,22 +33,51 @@ app = FastAPI(
     version="0.1.0",
     description="SlotBack appointment recovery API",
     lifespan=lifespan,
+    debug=settings.debug,
 )
 
-# CORS Middleware
-origins = [origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()]
+# CORS Middleware with strict origin parsing
+configured_origins = [
+    origin.strip() for origin in settings.cors_origins.split(",") if origin.strip()
+]
+# If configured with invalid wildcard or empty, fallback safely to default local origin
+safe_origins = (
+    [o for o in configured_origins if o != "*"]
+    if configured_origins
+    else ["http://localhost:5173"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins or ["*"],
+    allow_origins=safe_origins or ["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+# Liveness check (process is running)
 @app.get("/health", tags=["health"])
-def health_check() -> dict[str, str]:
+@app.get("/health/live", tags=["health"])
+def liveness_check() -> dict[str, str]:
     return {"status": "ok", "service": "slotback-api"}
+
+
+# Readiness check (verifies database connectivity)
+@app.get("/health/ready", tags=["health"])
+def readiness_check() -> JSONResponse:
+    try:
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={"status": "ready", "database": "connected"},
+        )
+    except Exception as exc:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "unavailable", "database": f"disconnected: {str(exc)}"},
+        )
 
 
 # Include API v1 Router

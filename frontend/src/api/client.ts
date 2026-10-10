@@ -12,9 +12,13 @@ import {
 const API_BASE = '/api/v1';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('slotback_token') : null;
+  const authHeaders: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+
   const response = await fetch(`${API_BASE}${url}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
       ...options?.headers,
     },
     ...options,
@@ -106,4 +110,21 @@ export const api = {
   getSettings: (): Promise<BusinessSetting> => fetchJson('/settings'),
   updateSettings: (data: BusinessSetting): Promise<BusinessSetting> =>
     fetchJson('/settings', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Auth
+  login: async (email: string, password: string): Promise<{ access_token: string; user: unknown }> => {
+    const res = await fetchJson<{ access_token: string; user: unknown }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+    if (res.access_token && typeof window !== 'undefined') {
+      localStorage.setItem('slotback_token', res.access_token);
+    }
+    return res;
+  },
+  logout: () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('slotback_token');
+    }
+  },
 };

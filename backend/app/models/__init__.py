@@ -4,6 +4,7 @@ from backend.app.models.domain import (
     NotificationLog,
     RecoveryOffer,
     Service,
+    User,
     WaitlistEntry,
 )
 
@@ -14,4 +15,5 @@ __all__ = [
     "RecoveryOffer",
     "NotificationLog",
     "BusinessSetting",
+    "User",
 ]

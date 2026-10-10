@@ -165,6 +165,22 @@ class BusinessSetting(Base):
         String(255), nullable=False, default="staff@slotback.com"
     )
     auto_match_waitlist: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    business_id: Mapped[str] = mapped_column(String(36), nullable=False, default="1")
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utc_now
+    )
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    role: Mapped[str] = mapped_column(String(30), nullable=False, default="staff")  # "admin", "staff"
+    business_id: Mapped[str] = mapped_column(String(36), nullable=False, default="1")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utc_now
     )

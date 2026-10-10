@@ -19,6 +19,7 @@ from backend.app.schemas.domain import (
     ServiceUpdate,
     WaitlistCreate,
 )
+from backend.app.services.notification_provider import notification_provider
 from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
@@ -333,13 +334,25 @@ class SlotBackService:
         # Update waitlist status
         waitlist.status = "offered"
 
-        # Record notification log
-        notif_status = "failed" if data.simulate_notification_failure else "delivered"
-        error_msg = (
-            "SMTP delivery failure: Connection timed out"
-            if data.simulate_notification_failure
-            else None
-        )
+        # Dispatch notification via provider boundary
+        if data.simulate_notification_failure:
+            notif_status = "failed"
+            error_msg = "SMTP delivery failure: Connection timed out"
+        else:
+            try:
+                service_name = appointment.service.name if appointment.service else "Service"
+                delivery_result = notification_provider.send_recovery_offer_email(
+                    recipient_email=waitlist.customer_email,
+                    customer_name=waitlist.customer_name,
+                    service_name=service_name,
+                    offer_url=f"/offer/{token}",
+                    expiry_minutes=expiry_mins,
+                )
+                notif_status = delivery_result.status
+                error_msg = delivery_result.error_message
+            except Exception as exc:
+                notif_status = "failed"
+                error_msg = f"Delivery error: {str(exc)}"
 
         notif_log = NotificationLog(
             recovery_offer=offer,
@@ -437,9 +450,29 @@ class SlotBackService:
         if not log:
             raise HTTPException(status_code=404, detail="Notification log not found")
 
+        if log.retry_count >= 3:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Maximum notification retry limit (3) exceeded for this offer.",
+            )
+
         log.retry_count += 1
-        log.status = "delivered"
-        log.error_message = None
+
+        # Attempt dispatch via provider
+        try:
+            delivery_result = notification_provider.send_recovery_offer_email(
+                recipient_email=log.recipient_email,
+                customer_name="Customer",
+                service_name="Appointment",
+                offer_url=f"/offer/{log.offer_id}",
+                expiry_minutes=60,
+            )
+            log.status = delivery_result.status
+            log.error_message = delivery_result.error_message
+        except Exception as exc:
+            log.status = "failed"
+            log.error_message = f"Delivery retry error: {str(exc)}"
+
         log.sent_at = utc_now()
 
         # If offer was pending/sent, update sent timestamp

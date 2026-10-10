@@ -1,9 +1,17 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from backend.app.main import app
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def authenticate_client(admin_headers):
+    client.headers.update(admin_headers)
+    yield
+    client.headers.pop("Authorization", None)
 
 
 def iso_time(minutes: int = 0) -> str:

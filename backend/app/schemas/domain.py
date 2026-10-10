@@ -154,3 +154,33 @@ class MetricsOut(BaseModel):
 class MatchRecommendationOut(BaseModel):
     cancelled_appointment: AppointmentOut
     eligible_waitlist_entries: list[WaitlistOut]
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=6)
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+    full_name: str = Field(..., min_length=1, max_length=100)
+    role: str = Field("staff", pattern="^(admin|staff)$")
+    business_id: str = "1"
+
+
+class UserOut(BaseModel):
+    id: str
+    email: EmailStr
+    full_name: str
+    role: str
+    business_id: str
+    is_active: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserOut
