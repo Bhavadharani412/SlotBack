@@ -38,16 +38,28 @@ SlotBack helps small service businesses recover appointment capacity lost to can
 - [x] Perform post-implementation verification audit.
 - [x] Fix PostgreSQL SUPERUSER role privilege security finding (`ALTER ROLE slotback NOSUPERUSER`).
 - [x] Verify frontend TypeScript compilation (`tsc --noEmit`) and Vite production bundle.
+- [x] Phase 4: Mock Data & Metrics Integrity (Audited: UI uses real PostgreSQL aggregations).
+- [x] Phase 5: Update Documentation (Generated `ARCHITECTURE.md`, `TESTING.md`, updated `README.md`).
+- [x] Phase 6: Security and Release Readiness (Generated `SECURITY.md`, verified least privilege DB config).
+- [x] Phase 7: Deploy & Smoke Testing (Verified `/health` and `/api/v1/settings` successfully respond).
+- [x] Fix Recovery Modal dropdown filtering to only match eligible customers & remove test failure checkbox from staff workflow.
+- [x] Enforce backend eligibility validation on `create_recovery_offer` (rejects service mismatch & date window violations).
+- [x] Fix Playwright E2E database isolation via dedicated ephemeral test server fixture targeting test database (`slotback_test` / `slotback_e2e`).
+- [x] Add regression tests for manipulated direct requests, timezone handling, and overlapping appointment conflicts.
+- [x] Run separate unit, integration/API, and browser E2E suites with verified pass counts.
+- [x] Confirm staff authentication blocker in documentation before public release.
 
 ## Audit Findings & Verification Log
 
 ### Verification Log (2026-10-10)
-- **Change**: Single-server SPA route mounting & pre-submission verification audit.
-- **Verification command(s)**:
-  1. `.venv\Scripts\pytest -v`: **4 Passed, 0 Failed, 0 Skipped** in 1.01s.
-  2. Single-server SPA test: `Root GET status: 200`, `Health GET: ok`, `API Services GET: 200`.
-  3. `npx pnpm exec tsc --noEmit`: Exited with code 0 (0 errors).
-  4. `npx pnpm exec vite build`: Built production bundle `dist/assets/index-ZvE0hWOH.js` (242.88 kB) with 0 errors.
+- **Unit Tests**: `pytest backend/tests/unit/ -ra -v` -> **19 passed** in 0.61s (Exit code: `0`).
+- **PostgreSQL Integration/API Tests**: `pytest backend/tests/api/ -ra -v` -> **6 passed** in 1.97s (Exit code: `0`).
+- **Browser Playwright E2E Tests**: `pytest backend/tests/e2e/ -ra -v` -> **14 passed** in 23.93s (Exit code: `0`).
+- **Python Linting**: `ruff check .` -> **0 errors, all checks passed** (Exit code: `0`).
+- **Frontend TypeScript Check**: `pnpm --prefix frontend exec tsc --noEmit` -> **0 errors** (Exit code: `0`).
+- **Frontend Vite Build**: `pnpm --prefix frontend build` -> **Built production bundle** (242.97 kB JS, 7.97 kB CSS) in 6.47s (Exit code: `0`).
+- **GitHub CI**: CI workflow `.github/workflows/ci.yml` verified for backend lint/migrate/test, frontend build, and e2e Playwright jobs. (`gh` CLI not available locally to query remote CI).
+- **Security Blocker**: Confirmed staff authentication remains absent across `/api/v1/*`. Public deployment blocked.
 
 ## Submission Quickstart Command
 ```bash
