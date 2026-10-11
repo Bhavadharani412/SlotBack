@@ -56,8 +56,25 @@ SlotBack helps small service businesses recover appointment capacity lost to can
 - [x] Phase 7: Final Automated Verification & Deployment Preparation (Added Playwright auth UI browser suite, verified 53/53 tests, built production Dockerfile, documented deployment runbooks).
 - [x] Phase 8: Production Readiness, UX Polish & Admin Synchronization (Prevent past booking slots, auto-mark completed appointments, admin user sync from `.env`, lag-free candidate matching, customer user guides, direct user-friendly language, Docker Compose & Render deployment configs).
 - [x] Phase 9: CI Initialization Fix, Test DB Isolation, Admin Password Restart Invariant & Render Readiness (Resolved `ensure_initial_admin()` `RuntimeError` during CI by supplying test-only credentials in `ci.yml` and test fixtures, enforced database isolation preventing accidental production connection, verified initial admin setup preserves existing password on restart, normalized cloud database URLs for Render, added dynamic `$PORT` and migration entrypoint in Dockerfile).
+- [x] Phase 10: Render Docker Build Fix (Resolved `packages field missing or empty` in Render Docker build by upgrading Docker and CI pnpm from v9 to v10, copying `frontend/pnpm-workspace.yaml` with dependency manifests, adding `"packageManager": "pnpm@10.5.2"`, and creating `.dockerignore` to exclude host `node_modules`).
 
 ## Audit Findings & Verification Log
+
+### Verification Log (2026-10-11 — Render Docker Build Fix)
+- **Root Cause Analysis**:
+  - `frontend/pnpm-workspace.yaml` configures `allowBuilds: { esbuild: true }`, a feature introduced in pnpm v10+ where `pnpm-workspace.yaml` can configure build script execution without declaring a `packages` field.
+  - In `Dockerfile`, Stage 1 activated `pnpm@9` via Corepack. In pnpm v9, any `pnpm-workspace.yaml` is strictly parsed as a monorepo workspace manifest requiring a non-empty `packages` list, throwing `ERROR: packages field missing or empty` during `RUN pnpm build`.
+- **Implementation & Fix**:
+  - Upgraded Dockerfile Corepack activation from `pnpm@9` to `pnpm@10`.
+  - Added `frontend/pnpm-workspace.yaml` to the dependency cache copy step in `Dockerfile` (`COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./`).
+  - Added `"packageManager": "pnpm@10.5.2"` to `frontend/package.json`.
+  - Created `.dockerignore` excluding `.git`, `.venv`, host `node_modules`, and local build artifacts from polluting the container build context.
+  - Aligned `.github/workflows/ci.yml` with `version: 10` for `pnpm/action-setup@v3`.
+- **Verification**:
+  - `pnpm --prefix frontend build`: **Passed** (built production bundle in 2.46s).
+  - `pnpm --prefix frontend exec tsc --noEmit`: **Passed** (0 errors).
+  - `ruff check .`: **Passed** (0 errors).
+  - `pytest -ra -v`: **38 passed** in 21.98s.
 
 ### Verification Log (2026-10-11 — CI Test Suite & Render Production Hardening)
 - **CI Test Suite Initialization Fix**:

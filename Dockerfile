@@ -4,11 +4,11 @@
 FROM node:20-alpine AS frontend-builder
 WORKDIR /build
 
-# Enable corepack and install pnpm
-RUN corepack enable && corepack prepare pnpm@9 --activate
+# Enable corepack and install pnpm v10
+RUN corepack enable && corepack prepare pnpm@10 --activate
 
-# Install dependencies with lockfile freezing
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+# Install dependencies with lockfile freezing and workspace configuration
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # Copy source and compile production bundle
