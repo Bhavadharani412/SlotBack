@@ -2,7 +2,9 @@
 set -e
 
 echo "Applying Alembic database schema migrations..."
-alembic upgrade head || echo "Database migration step completed."
+alembic upgrade head
+
+echo "Database migration step completed successfully."
 
 PORT="${PORT:-8000}"
 echo "Starting SlotBack production server on port ${PORT}..."

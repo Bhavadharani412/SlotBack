@@ -57,11 +57,36 @@ SlotBack helps small service businesses recover appointment capacity lost to can
 - [x] Phase 8: Production Readiness, UX Polish & Admin Synchronization (Prevent past booking slots, auto-mark completed appointments, admin user sync from `.env`, lag-free candidate matching, customer user guides, direct user-friendly language, Docker Compose & Render deployment configs).
 - [x] Phase 9: CI Initialization Fix, Test DB Isolation, Admin Password Restart Invariant & Render Readiness (Resolved `ensure_initial_admin()` `RuntimeError` during CI by supplying test-only credentials in `ci.yml` and test fixtures, enforced database isolation preventing accidental production connection, verified initial admin setup preserves existing password on restart, normalized cloud database URLs for Render, added dynamic `$PORT` and migration entrypoint in Dockerfile).
 - [x] Phase 10: Render Docker Build Fix (Resolved `packages field missing or empty` in Render Docker build by upgrading Docker and CI pnpm from v9 to v10, copying `frontend/pnpm-workspace.yaml` with dependency manifests, adding `"packageManager": "pnpm@10.5.2"`, and creating `.dockerignore` to exclude host `node_modules`).
+- [x] Phase 11: Production Database Startup & Migration Failure Guard Fix (Resolved Render startup failure where psycopg connected to localhost:5432 and entrypoint.sh printed false migration success: strictly fail fast on missing/localhost DATABASE_URL in production, normalize Render postgres:// schemes, fail immediately with non-zero exit code on Alembic failure in entrypoint.sh, and ensure Alembic and FastAPI share identical database configuration).
 
 ## Audit Findings & Verification Log
 
-### Verification Log (2026-10-11 — Render Docker Build Fix)
+### Verification Log (2026-10-11 — Render Production Database Startup & Migration Failure Fix)
 - **Root Cause Analysis**:
+  - `scripts/entrypoint.sh` used `alembic upgrade head || echo "Database migration step completed."`, which swallowed Alembic migration exit codes, masked connection errors, printed false success, and started Uvicorn despite failed migrations.
+  - In production mode, `backend/app/core/config.py` lacked fail-fast validation for `DATABASE_URL`, permitting empty or localhost connection strings (such as defaults or misconfigured Render service env vars) to reach the psycopg driver, leading to `Connection refused` on `127.0.0.1:5432`.
+- **Implementation & Fix**:
+  - **Fail-Fast Production Database Validation** (`backend/app/core/config.py`):
+    - Added strict validation in `validate_production_configuration()` enforcing that `DATABASE_URL` is non-empty and does NOT point to `localhost`, `127.0.0.1`, `::1`, or loopback addresses in production.
+    - Normalized supported PostgreSQL schemes (`postgres://`, `postgresql://`, `postgresql+psycopg2://`, `postgresql+psycopg3://`, `postgresql+psycopg://`) to `postgresql+psycopg://` via URL parsing while strictly preserving credentials, host, port, database, and query parameters.
+  - **Alembic Invariant Enforcement** (`backend/alembic/env.py`):
+    - Added `settings.validate_production_configuration()` to both `run_migrations_offline()` and `run_migrations_online()`. Guaranteed Alembic and FastAPI engine share the exact same `settings.database_url`.
+  - **Strict Entrypoint Script Execution** (`scripts/entrypoint.sh`):
+    - Removed `|| echo ...` failure suppression. Executed `alembic upgrade head` under `set -e` so migration failure immediately aborts with non-zero exit code, never printing success and never launching Uvicorn.
+  - **Database Engine Guard** (`backend/app/db/session.py`):
+    - Added guard validating production settings before engine creation.
+  - **Render Blueprint Co-location** (`render.yaml`):
+    - Added `region: oregon` to both `slotback` web service and `slotback-db` database to guarantee datacenter co-location for internal networking via `fromDatabase: name: slotback-db, property: connectionString`.
+  - **Automated Tests** (`backend/tests/api/test_security_auth.py`, `backend/tests/unit/test_entrypoint.py`):
+    - Added unit test suite verifying entrypoint non-zero exit and Uvicorn suppression on migration failure, scheme normalization, and fail-fast rejection of localhost in production.
+- **Verification**:
+  - Unified Backend Suite (`pytest -ra -v`): **41 passed** in 24.04s (Exit code: `0`).
+  - Playwright E2E Suite (`pytest backend/tests/e2e/ -ra -v --timeout=60`): **20 passed** in 26.30s (Exit code: `0`).
+  - Total Tests: **61 passed, 0 failed** across all tiers.
+  - Python Linting (`ruff check .`): **0 errors, all checks passed** (Exit code: `0`).
+  - Frontend TypeScript (`pnpm --prefix frontend exec tsc --noEmit`): **0 errors** (Exit code: `0`).
+  - Frontend Production Build (`pnpm --prefix frontend build`): **Built production bundle** (273.89 kB JS, 8.01 kB CSS) (Exit code: `0`).
+
   - `frontend/pnpm-workspace.yaml` configures `allowBuilds: { esbuild: true }`, a feature introduced in pnpm v10+ where `pnpm-workspace.yaml` can configure build script execution without declaring a `packages` field.
   - In `Dockerfile`, Stage 1 activated `pnpm@9` via Corepack. In pnpm v9, any `pnpm-workspace.yaml` is strictly parsed as a monorepo workspace manifest requiring a non-empty `packages` list, throwing `ERROR: packages field missing or empty` during `RUN pnpm build`.
 - **Implementation & Fix**:

@@ -203,12 +203,14 @@ def test_rate_limiting_on_login_endpoint():
 
 def test_production_configuration_fail_safe_guards():
     """Verify that Settings.validate_production_configuration raises ValueError on insecure setups."""
+    remote_db_url = "postgresql+psycopg://slotback:pw@dpg-c123456789-a.oregon-postgres.render.com:5432/slotback"
+
     # 1. Insecure default SECRET_KEY in production raises error
     insecure_settings = Settings(
         app_env="production",
         debug=False,
         secret_key="slotback-insecure-dev-secret-key-change-in-production-min32chars",
-        database_url="postgresql+psycopg://slotback:pw@localhost/slotback",
+        database_url=remote_db_url,
         cors_origins="https://slotback.com",
     )
     with pytest.raises(ValueError, match="SECRET_KEY must be a unique, high-entropy string"):
@@ -219,7 +221,7 @@ def test_production_configuration_fail_safe_guards():
         app_env="production",
         debug=True,
         secret_key="super-secure-production-secret-key-with-high-entropy-123456",
-        database_url="postgresql+psycopg://slotback:pw@localhost/slotback",
+        database_url=remote_db_url,
         cors_origins="https://slotback.com",
     )
     with pytest.raises(ValueError, match="DEBUG must be false in production"):
@@ -230,21 +232,79 @@ def test_production_configuration_fail_safe_guards():
         app_env="production",
         debug=False,
         secret_key="super-secure-production-secret-key-with-high-entropy-123456",
-        database_url="postgresql+psycopg://slotback:pw@localhost/slotback",
+        database_url=remote_db_url,
         cors_origins="*",
     )
     with pytest.raises(ValueError, match="Wildcard CORS"):
         wildcard_cors_settings.validate_production_configuration()
 
-    # 4. Valid production settings pass
+    # 4. Missing or empty DATABASE_URL in production raises error
+    missing_db_settings = Settings(
+        app_env="production",
+        debug=False,
+        secret_key="super-secure-production-secret-key-with-high-entropy-123456",
+        database_url="",
+        cors_origins="https://slotback.com",
+    )
+    with pytest.raises(ValueError, match="DATABASE_URL environment variable is missing or empty"):
+        missing_db_settings.validate_production_configuration()
+
+    # 5. Localhost DATABASE_URL in production raises fail-fast error
+    localhost_db_settings = Settings(
+        app_env="production",
+        debug=False,
+        secret_key="super-secure-production-secret-key-with-high-entropy-123456",
+        database_url="postgresql+psycopg://slotback:pw@localhost:5432/slotback",
+        cors_origins="https://slotback.com",
+    )
+    with pytest.raises(ValueError, match="DATABASE_URL points to localhost"):
+        localhost_db_settings.validate_production_configuration()
+
+    # 6. Loopback 127.0.0.1 in production raises fail-fast error
+    loopback_db_settings = Settings(
+        app_env="production",
+        debug=False,
+        secret_key="super-secure-production-secret-key-with-high-entropy-123456",
+        database_url="postgresql+psycopg://slotback:pw@127.0.0.1:5432/slotback",
+        cors_origins="https://slotback.com",
+    )
+    with pytest.raises(ValueError, match="DATABASE_URL points to localhost"):
+        loopback_db_settings.validate_production_configuration()
+
+    # 7. Valid production settings pass
     valid_settings = Settings(
         app_env="production",
         debug=False,
         secret_key="super-secure-production-secret-key-with-high-entropy-123456",
-        database_url="postgresql+psycopg://slotback:pw@localhost/slotback",
+        database_url=remote_db_url,
         cors_origins="https://slotback.com,https://app.slotback.com",
     )
     valid_settings.validate_production_configuration()  # Should not raise
+
+
+def test_database_url_scheme_normalization():
+    """Verify supported PostgreSQL connection string schemes are normalized to postgresql+psycopg://
+
+    while strictly preserving host, port, credentials, database, and query parameters.
+    """
+    remote_host = "dpg-c123456789-a.oregon-postgres.render.com"
+
+    # Render standard: postgres://
+    s1 = Settings(database_url=f"postgres://slotback:secret@{remote_host}:5432/slotback?sslmode=require")
+    assert s1.database_url == f"postgresql+psycopg://slotback:secret@{remote_host}:5432/slotback?sslmode=require"
+
+    # Standard postgresql://
+    s2 = Settings(database_url=f"postgresql://slotback:secret@{remote_host}:5432/slotback")
+    assert s2.database_url == f"postgresql+psycopg://slotback:secret@{remote_host}:5432/slotback"
+
+    # postgresql+psycopg2://
+    s3 = Settings(database_url=f"postgresql+psycopg2://slotback:secret@{remote_host}:5432/slotback")
+    assert s3.database_url == f"postgresql+psycopg://slotback:secret@{remote_host}:5432/slotback"
+
+    # Already normalized postgresql+psycopg://
+    s4 = Settings(database_url=f"postgresql+psycopg://slotback:secret@{remote_host}:5432/slotback")
+    assert s4.database_url == f"postgresql+psycopg://slotback:secret@{remote_host}:5432/slotback"
+
 
 
 def test_liveness_and_readiness_checks():

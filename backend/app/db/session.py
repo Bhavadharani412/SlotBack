@@ -9,13 +9,20 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+# Validate production configuration before creating production engine
+if settings.app_env.lower() == "production":
+    settings.validate_production_configuration()
+
+engine = create_engine(settings.database_url, pool_pre_ping=True) if settings.database_url else None
+SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False) if engine else None
 
 
 def get_db() -> Generator[Session, None, None]:
+    if SessionLocal is None:
+        raise RuntimeError("Database engine is not configured.")
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
+

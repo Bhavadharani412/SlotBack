@@ -36,7 +36,10 @@ def get_test_database_url() -> str:
 
     url = os.environ.get("TEST_DATABASE_URL") or settings.test_database_url
     if not url:
-        dev_url = settings.database_url
+        dev_url = (
+            settings.database_url
+            or "postgresql+psycopg://slotback:slotback_dev_password@localhost:5432/slotback"
+        )
         parts = urlsplit(dev_url)
         new_path = (
             "/slotback_test" if parts.path in ("/slotback", "", "/") else parts.path + "_test"

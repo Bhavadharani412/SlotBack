@@ -4,6 +4,7 @@ services:
     env: docker
     dockerfilePath: Dockerfile
     plan: standard
+    region: oregon
     healthCheckPath: /health/ready
     envVars:
       - key: APP_ENV
@@ -30,3 +31,5 @@ databases:
     databaseName: slotback
     user: slotback
     plan: standard
+    region: oregon
+

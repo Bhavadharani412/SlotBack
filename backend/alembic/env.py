@@ -22,6 +22,8 @@ target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
+    if settings.app_env.lower() == "production":
+        settings.validate_production_configuration()
     url = settings.database_url
     context.configure(
         url=url,
@@ -35,6 +37,8 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    if settings.app_env.lower() == "production":
+        settings.validate_production_configuration()
     configuration = config.get_section(config.config_ini_section) or {}
     configuration["sqlalchemy.url"] = settings.database_url
     connectable = engine_from_config(
