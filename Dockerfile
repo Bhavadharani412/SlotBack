@@ -35,6 +35,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY alembic.ini ./
 COPY scripts/ ./scripts/
+RUN chmod +x ./scripts/*.sh
 
 # Copy compiled static frontend artifacts from builder
 COPY --from=frontend-builder /build/dist ./frontend/dist
@@ -52,4 +53,4 @@ ENV APP_ENV=production \
 HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
   CMD curl -f http://localhost:8000/health/ready || exit 1
 
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers", "--forwarded-allow-ips=*"]
+CMD ["./scripts/entrypoint.sh"]

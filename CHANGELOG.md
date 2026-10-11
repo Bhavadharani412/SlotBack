@@ -55,8 +55,39 @@ SlotBack helps small service businesses recover appointment capacity lost to can
 - [x] Phase 6: Staff Authentication UI & Frontend RBAC (Implemented responsive Sign In `/login` and Staff Provisioning `/register` screens, AuthContext state management, JWT Bearer client injection, profile & role badges in navigation, ProtectedRoute staff guards while maintaining public booking and capability-token recovery).
 - [x] Phase 7: Final Automated Verification & Deployment Preparation (Added Playwright auth UI browser suite, verified 53/53 tests, built production Dockerfile, documented deployment runbooks).
 - [x] Phase 8: Production Readiness, UX Polish & Admin Synchronization (Prevent past booking slots, auto-mark completed appointments, admin user sync from `.env`, lag-free candidate matching, customer user guides, direct user-friendly language, Docker Compose & Render deployment configs).
+- [x] Phase 9: CI Initialization Fix, Test DB Isolation, Admin Password Restart Invariant & Render Readiness (Resolved `ensure_initial_admin()` `RuntimeError` during CI by supplying test-only credentials in `ci.yml` and test fixtures, enforced database isolation preventing accidental production connection, verified initial admin setup preserves existing password on restart, normalized cloud database URLs for Render, added dynamic `$PORT` and migration entrypoint in Dockerfile).
 
 ## Audit Findings & Verification Log
+
+### Verification Log (2026-10-11 — CI Test Suite & Render Production Hardening)
+- **CI Test Suite Initialization Fix**:
+  - Configured test-only environment variables (`INITIAL_ADMIN_EMAIL: test-admin@slotback.internal`, `INITIAL_ADMIN_PASSWORD: TestAdminSecurePassword123!`) in `.github/workflows/ci.yml` for both `backend` and `e2e` jobs.
+  - Added test-only credential fallbacks in `backend/tests/conftest.py` so local test executions outside CI never fail when `.env` is absent.
+  - Production invariants preserved: `test_initial_admin_requires_configured_password` continues to verify that in production mode, an empty password with an unseeded database raises `RuntimeError`.
+- **Database Isolation & Safety Invariants**:
+  - Updated `get_test_database_url()` in `backend/tests/conftest.py` with strict safety guards refusing execution if `APP_ENV=production` or if the database name matches production (`prod`, `production`, `slotback`).
+  - Redirected `db_session.engine` and `db_session.SessionLocal` in `conftest.py` to `test_engine` and `TestingSessionLocal` to prevent background tasks or health checks from touching dev/production databases during tests.
+- **Admin Password Invariant on Restart (Req 8)**:
+  - Updated `ensure_initial_admin()` in `backend/app/core/auth.py` so that if an administrator user already exists, their existing password is never reset or overwritten on service restart.
+  - Added regression test `test_ensure_initial_admin_does_not_reset_existing_password` in `test_security_auth.py` verifying that custom passwords survive server restarts (passed).
+- **Render & Cloud Deployment Hardening**:
+  - Added Pydantic field validator in `backend/app/core/config.py` normalizing `postgres://` and `postgresql://` connection strings (standard on Render/Heroku) to `postgresql+psycopg://`.
+  - Created executable container entrypoint `scripts/entrypoint.sh` executing `alembic upgrade head` and binding to dynamic `${PORT:-8000}`.
+  - Updated `Dockerfile` to set execute permissions on scripts and launch via `scripts/entrypoint.sh`.
+- **Automated Verification**:
+  - Unified Backend Tests (`pytest -ra -v`): **38 passed** in 23.60s (Exit code: `0`).
+  - Playwright E2E Browser Tests (`pytest backend/tests/e2e/ -ra -v --timeout=60`): **20 passed** in 32.65s (Exit code: `0`).
+  - Total Test Suite: **58 passed, 0 failed** across all tiers.
+  - Python Linting: `ruff check .` -> **0 errors, all checks passed** (Exit code: `0`).
+  - Frontend TypeScript Check: `pnpm --prefix frontend exec tsc --noEmit` -> **0 errors** (Exit code: `0`).
+  - Frontend Production Build: `pnpm --prefix frontend build` -> **Built production bundle** (273.89 kB JS, 8.01 kB CSS) (Exit code: `0`).
+  - Alembic Migrations: `alembic upgrade head` -> **Up to date** (Exit code: `0`).
+
+## Submission Quickstart Command
+```bash
+uvicorn backend.app.main:app --reload --port 8000
+```
+Open `http://localhost:8000` in browser to view full SlotBack React UI.
 
 ### Verification Log (2026-10-11 — Production Readiness, UX Polish & Hosting Suite)
 - **Past Time Booking Prevention**:

@@ -339,3 +339,26 @@ def test_admin_can_list_staff_users_and_staff_cannot(
     assert isinstance(users, list)
     assert len(users) >= 1
     assert any(u["role"] == "admin" for u in users)
+
+
+def test_ensure_initial_admin_does_not_reset_existing_password():
+    """Verify that restarting or invoking ensure_initial_admin preserves an existing administrator's password."""
+    from backend.app.core.security import hash_password, verify_password
+
+    with TestingSessionLocal() as session:
+        admin = session.query(User).filter(User.email == settings.initial_admin_email).first()
+        assert admin is not None
+
+        # Simulate administrator changing their password
+        new_password = "ChangedCustomAdminPassword987!"
+        admin.hashed_password = hash_password(new_password)
+        session.commit()
+        session.refresh(admin)
+
+        # Call ensure_initial_admin as happens on subsequent server restarts
+        restarted_admin = ensure_initial_admin(session)
+        assert restarted_admin is not None
+        assert restarted_admin.id == admin.id
+
+        # Invariant (Req 8): Existing administrator's password must NOT be overwritten or reset
+        assert verify_password(new_password, restarted_admin.hashed_password) is True

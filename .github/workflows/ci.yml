@@ -30,6 +30,8 @@ jobs:
       DEBUG: "false"
       CORS_ORIGINS: "http://localhost:5173"
       LOG_LEVEL: WARNING
+      INITIAL_ADMIN_EMAIL: test-admin@slotback.internal
+      INITIAL_ADMIN_PASSWORD: TestAdminSecurePassword123!
     steps:
       - uses: actions/checkout@v4
 
@@ -97,6 +99,9 @@ jobs:
       APP_ENV: test
       DEBUG: "false"
       CORS_ORIGINS: "http://localhost:5173"
+      LOG_LEVEL: WARNING
+      INITIAL_ADMIN_EMAIL: test-admin@slotback.internal
+      INITIAL_ADMIN_PASSWORD: TestAdminSecurePassword123!
     steps:
       - uses: actions/checkout@v4
 

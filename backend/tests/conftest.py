@@ -1,6 +1,13 @@
 import os
 from urllib.parse import urlsplit, urlunsplit
 
+# Provide test-only fallback credentials if not provided in environment
+if not os.environ.get("INITIAL_ADMIN_PASSWORD"):
+    os.environ["INITIAL_ADMIN_PASSWORD"] = "TestAdminSecurePassword123!"
+if not os.environ.get("INITIAL_ADMIN_EMAIL"):
+    os.environ["INITIAL_ADMIN_EMAIL"] = "test-admin@slotback.internal"
+
+import backend.app.db.session as db_session
 import backend.app.models  # noqa: F401
 import pytest
 from backend.app.core.auth import ensure_initial_admin
@@ -13,8 +20,20 @@ from backend.app.models.domain import User
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
+if not settings.initial_admin_password:
+    settings.initial_admin_password = os.environ["INITIAL_ADMIN_PASSWORD"]
+if not settings.initial_admin_email:
+    settings.initial_admin_email = os.environ["INITIAL_ADMIN_EMAIL"]
+
 
 def get_test_database_url() -> str:
+    # Invariant: Never allow tests to run in production mode
+    if os.environ.get("APP_ENV", "").lower() == "production" or settings.app_env.lower() == "production":
+        raise RuntimeError(
+            "CRITICAL SAFETY VIOLATION: Refusing to run tests in APP_ENV='production'. "
+            "Tests must run in an isolated test environment."
+        )
+
     url = os.environ.get("TEST_DATABASE_URL") or settings.test_database_url
     if not url:
         dev_url = settings.database_url
@@ -24,12 +43,13 @@ def get_test_database_url() -> str:
         )
         url = urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
 
-    # Invariant: Never allow tests to run against the main development database
+    # Invariant: Never allow tests to run against development or production database
     parsed = urlsplit(url)
-    if parsed.path.rstrip("/") == "/slotback":
+    db_name = parsed.path.strip("/").split("?")[0]
+    if db_name in ("slotback", "production", "prod") or ("prod" in db_name and "test" not in db_name):
         raise RuntimeError(
-            "CRITICAL SAFETY VIOLATION: Refusing to run tests against the main development database ('slotback'). "
-            "Please configure TEST_DATABASE_URL pointing to 'slotback_test'."
+            f"CRITICAL SAFETY VIOLATION: Refusing to run tests against '{db_name}'. "
+            "Tests must target an isolated test database (e.g. 'slotback_test' or 'slotback_e2e')."
         )
     return url
 
@@ -37,6 +57,10 @@ def get_test_database_url() -> str:
 test_db_url = get_test_database_url()
 test_engine = create_engine(test_db_url, pool_pre_ping=True)
 TestingSessionLocal = sessionmaker(bind=test_engine, autoflush=False, expire_on_commit=False)
+
+# Override FastAPI db session module globals for full isolation in background/lifespan tasks
+db_session.engine = test_engine
+db_session.SessionLocal = TestingSessionLocal
 
 
 def override_get_db():

@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 
 from backend.app.core.config import settings
-from backend.app.core.security import decode_access_token, hash_password, verify_password
+from backend.app.core.security import decode_access_token, hash_password
 from backend.app.db.session import get_db
 from backend.app.models.domain import User
 from fastapi import Depends, HTTPException, status
@@ -120,17 +120,11 @@ def ensure_initial_admin(db: Session) -> User | None:
         )
         return admin_user
 
-    # If the admin user exists, synchronize password and ensure active admin role
-    if settings.initial_admin_password and not verify_password(
-        settings.initial_admin_password, admin_user.hashed_password
-    ):
-        admin_user.hashed_password = hash_password(settings.initial_admin_password)
+    # Invariant: If administrator already exists, do not reset or overwrite their password on restart.
+    # Preserve active status and role without altering credentials.
+    if admin_user.role != "admin" or not admin_user.is_active:
         admin_user.role = "admin"
         admin_user.is_active = True
         db.commit()
         db.refresh(admin_user)
-        logger.info(
-            "Synchronized initial administrator credentials from environment for: %s",
-            settings.initial_admin_email,
-        )
     return admin_user
