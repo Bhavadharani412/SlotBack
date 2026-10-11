@@ -58,11 +58,31 @@ SlotBack helps small service businesses recover appointment capacity lost to can
 - [x] Phase 9: CI Initialization Fix, Test DB Isolation, Admin Password Restart Invariant & Render Readiness (Resolved `ensure_initial_admin()` `RuntimeError` during CI by supplying test-only credentials in `ci.yml` and test fixtures, enforced database isolation preventing accidental production connection, verified initial admin setup preserves existing password on restart, normalized cloud database URLs for Render, added dynamic `$PORT` and migration entrypoint in Dockerfile).
 - [x] Phase 10: Render Docker Build Fix (Resolved `packages field missing or empty` in Render Docker build by upgrading Docker and CI pnpm from v9 to v10, copying `frontend/pnpm-workspace.yaml` with dependency manifests, adding `"packageManager": "pnpm@10.5.2"`, and creating `.dockerignore` to exclude host `node_modules`).
 - [x] Phase 11: Production Database Startup & Migration Failure Guard Fix (Resolved Render startup failure where psycopg connected to localhost:5432 and entrypoint.sh printed false migration success: strictly fail fast on missing/localhost DATABASE_URL in production, normalize Render postgres:// schemes, fail immediately with non-zero exit code on Alembic failure in entrypoint.sh, and ensure Alembic and FastAPI share identical database configuration).
+- [x] Phase 12: Initial Admin Concurrent Startup & Unique Constraint Idempotency Fix (Resolved `psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "users_email_key"` during multi-worker container startup: normalized email lookup, wrapped insert in `try...except IntegrityError` with rollback and re-query, and preserved existing password hash and admin status).
 
 ## Audit Findings & Verification Log
 
-### Verification Log (2026-10-11 — Render Production Database Startup & Migration Failure Fix)
+### Verification Log (2026-10-11 — Initial Admin Concurrent Startup & Unique Constraint Fix)
 - **Root Cause Analysis**:
+  - `ensure_initial_admin()` runs during FastAPI `lifespan` initialization. In production, Uvicorn runs with `--workers 2`.
+  - When two worker processes booted concurrently against an empty database, both workers observed `admin_user is None` before either had committed. Worker 1 succeeded in committing the admin record, while Worker 2's `db.commit()` failed with `psycopg.errors.UniqueViolation: duplicate key value violates unique constraint "users_email_key"`, aborting Worker 2.
+- **Implementation & Fix**:
+  - **Normalized Email Lookup** (`backend/app/core/auth.py`):
+    - Normalized `settings.initial_admin_email` with `.strip().lower()`.
+    - Queried existing users via `select(User).where(func.lower(func.trim(User.email)) == admin_email)`.
+  - **Graceful Concurrency Race Handling** (`backend/app/core/auth.py`):
+    - Wrapped `db.commit()` in `try...except IntegrityError:`.
+    - On collision, immediately calls `db.rollback()`, logs the event, and re-queries for the existing administrator created by the concurrent worker.
+  - **Safe Attribute & Password Preservation** (`backend/app/core/auth.py`):
+    - Preserves existing password hashes and user records without resetting or overwriting credentials.
+    - Idempotently verifies and restores `admin` role and `is_active=True` status only if demoted or deactivated.
+  - **Automated Regression Suite** (`backend/tests/api/test_security_auth.py`):
+    - `test_ensure_initial_admin_first_time_creation_and_repeated_startup`: verifies first-time creation and idempotency across repeated invocations.
+    - `test_ensure_initial_admin_verifies_role_and_active_status_safely`: verifies role and active status restoration without credential overwrites.
+    - `test_ensure_initial_admin_handles_concurrent_race_condition`: simulates concurrent worker commit collision, verifying transaction rollback and re-query.
+- **Verification**:
+  - Unified Backend Suite (`pytest -ra -v`): **44 passed** in 48.75s (Exit code: `0`).
+  - Python Linting (`ruff check .`): **0 errors, all checks passed** (Exit code: `0`).
   - `scripts/entrypoint.sh` used `alembic upgrade head || echo "Database migration step completed."`, which swallowed Alembic migration exit codes, masked connection errors, printed false success, and started Uvicorn despite failed migrations.
   - In production mode, `backend/app/core/config.py` lacked fail-fast validation for `DATABASE_URL`, permitting empty or localhost connection strings (such as defaults or misconfigured Render service env vars) to reach the psycopg driver, leading to `Connection refused` on `127.0.0.1:5432`.
 - **Implementation & Fix**:

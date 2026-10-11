@@ -422,3 +422,124 @@ def test_ensure_initial_admin_does_not_reset_existing_password():
 
         # Invariant (Req 8): Existing administrator's password must NOT be overwritten or reset
         assert verify_password(new_password, restarted_admin.hashed_password) is True
+
+
+def test_ensure_initial_admin_first_time_creation_and_repeated_startup(monkeypatch):
+    """Verify first-time administrator creation, idempotency, and repeated startup safety."""
+    from backend.app.core.security import verify_password
+
+    test_email = "new-admin-test@slotback.internal"
+    test_password = "SecureTestPassword123!"
+    monkeypatch.setattr(settings, "initial_admin_email", test_email)
+    monkeypatch.setattr(settings, "initial_admin_password", test_password)
+
+    with TestingSessionLocal() as session:
+        session.query(User).delete()
+        session.commit()
+        assert session.query(User).count() == 0
+
+        # 1. First-time creation
+        created = ensure_initial_admin(session)
+        assert created is not None
+        assert created.email == test_email
+        assert created.role == "admin"
+        assert created.is_active is True
+        assert verify_password(test_password, created.hashed_password) is True
+        assert session.query(User).count() == 1
+
+        # 2. Repeated startup #1 (does not duplicate or fail)
+        repeated_1 = ensure_initial_admin(session)
+        assert repeated_1 is not None
+        assert repeated_1.id == created.id
+        assert session.query(User).count() == 1
+
+        # 3. Repeated startup #2 with whitespace and uppercase in email setting
+        monkeypatch.setattr(settings, "initial_admin_email", f"  {test_email.upper()}  ")
+        repeated_2 = ensure_initial_admin(session)
+        assert repeated_2 is not None
+        assert repeated_2.id == created.id
+        assert session.query(User).count() == 1
+
+
+def test_ensure_initial_admin_verifies_role_and_active_status_safely(monkeypatch):
+    """If existing admin user was demoted or deactivated, ensure_initial_admin restores role and active status safely."""
+    from backend.app.core.security import hash_password, verify_password
+
+    test_email = "status-check-admin@slotback.internal"
+    custom_password = "CustomPasswordKeepIntact999!"
+    monkeypatch.setattr(settings, "initial_admin_email", test_email)
+    monkeypatch.setattr(settings, "initial_admin_password", "DifferentDefaultPassword123!")
+
+    with TestingSessionLocal() as session:
+        session.query(User).delete()
+        user = User(
+            email=test_email,
+            hashed_password=hash_password(custom_password),
+            full_name="Existing User",
+            role="staff",  # Demoted
+            business_id="1",
+            is_active=False,  # Inactive
+        )
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+        # ensure_initial_admin should restore role='admin' and is_active=True
+        restored = ensure_initial_admin(session)
+        assert restored is not None
+        assert restored.id == user.id
+        assert restored.role == "admin"
+        assert restored.is_active is True
+        # Password must NOT have been changed to DifferentDefaultPassword123!
+        assert verify_password(custom_password, restored.hashed_password) is True
+
+
+def test_ensure_initial_admin_handles_concurrent_race_condition(monkeypatch):
+    """Verify that a concurrent worker committing an admin first triggers a graceful rollback and re-query."""
+    from backend.app.core.security import hash_password
+    from sqlalchemy.exc import IntegrityError
+
+    test_email = "race-test-admin@slotback.internal"
+    monkeypatch.setattr(settings, "initial_admin_email", test_email)
+    monkeypatch.setattr(settings, "initial_admin_password", "RaceTestPassword123!")
+
+    with TestingSessionLocal() as session:
+        session.query(User).delete()
+        session.commit()
+
+        # Simulate concurrent worker inserting user right before commit
+        real_commit = session.commit
+        has_raced = False
+
+        def racing_commit():
+            nonlocal has_raced
+            if not has_raced:
+                has_raced = True
+                # Insert the conflicting user in another session
+                with TestingSessionLocal() as concurrent_session:
+                    concurrent_user = User(
+                        email=test_email,
+                        hashed_password=hash_password("ConcurrentWinnerPass!"),
+                        full_name="Concurrent Worker Admin",
+                        role="admin",
+                        business_id="1",
+                        is_active=True,
+                    )
+                    concurrent_session.add(concurrent_user)
+                    concurrent_session.commit()
+                # Original session's commit fails with IntegrityError
+                raise IntegrityError(
+                    "duplicate key value violates unique constraint 'users_email_key'",
+                    params=None,
+                    orig=Exception(),
+                )
+            real_commit()
+
+        session.commit = racing_commit
+
+        # ensure_initial_admin must handle IntegrityError gracefully and return the existing user
+        result = ensure_initial_admin(session)
+        assert result is not None
+        assert result.email == test_email
+        assert result.full_name == "Concurrent Worker Admin"
+        assert session.query(User).count() == 1

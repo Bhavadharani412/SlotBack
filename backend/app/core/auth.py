@@ -9,6 +9,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.exceptions import ExpiredSignatureError, PyJWTError
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -91,10 +92,16 @@ def require_admin(current_user: Annotated[User, Depends(get_current_user)]) -> U
 
 def ensure_initial_admin(db: Session) -> User | None:
     """Ensure the configured initial administrator from environment exists with active admin role."""
-    if not settings.initial_admin_email:
+    if not settings.initial_admin_email or not settings.initial_admin_email.strip():
         return None
 
-    admin_user = db.scalar(select(User).where(User.email == settings.initial_admin_email))
+    admin_email = settings.initial_admin_email.strip().lower()
+
+    # Query for the configured initial admin by normalized email before inserting
+    admin_user = db.scalar(
+        select(User).where(func.lower(func.trim(User.email)) == admin_email)
+    )
+
     if not admin_user:
         if not settings.initial_admin_password:
             user_count = db.scalar(select(func.count(User.id))) or 0
@@ -103,8 +110,9 @@ def ensure_initial_admin(db: Session) -> User | None:
                     "INITIAL_ADMIN_PASSWORD must be configured before creating the initial admin."
                 )
             return None
+
         admin_user = User(
-            email=settings.initial_admin_email,
+            email=admin_email,
             hashed_password=hash_password(settings.initial_admin_password),
             full_name="SlotBack Administrator",
             role="admin",
@@ -112,19 +120,42 @@ def ensure_initial_admin(db: Session) -> User | None:
             is_active=True,
         )
         db.add(admin_user)
-        db.commit()
-        db.refresh(admin_user)
-        logger.info(
-            "Initial administrator created successfully with email: %s",
-            settings.initial_admin_email,
-        )
-        return admin_user
+        try:
+            db.commit()
+            db.refresh(admin_user)
+            logger.info(
+                "Initial administrator created successfully with email: %s",
+                admin_email,
+            )
+            return admin_user
+        except IntegrityError:
+            # Handle concurrent startup race (e.g. multiple uvicorn workers starting simultaneously)
+            db.rollback()
+            logger.info(
+                "Concurrent worker created initial administrator with email: %s. Re-querying.",
+                admin_email,
+            )
+            admin_user = db.scalar(
+                select(User).where(func.lower(func.trim(User.email)) == admin_email)
+            )
+            if not admin_user:
+                raise
 
     # Invariant: If administrator already exists, do not reset or overwrite their password on restart.
     # Preserve active status and role without altering credentials.
-    if admin_user.role != "admin" or not admin_user.is_active:
+    needs_update = False
+    if admin_user.role != "admin":
         admin_user.role = "admin"
+        needs_update = True
+    if not admin_user.is_active:
         admin_user.is_active = True
-        db.commit()
-        db.refresh(admin_user)
+        needs_update = True
+
+    if needs_update:
+        try:
+            db.commit()
+            db.refresh(admin_user)
+        except Exception:
+            db.rollback()
+
     return admin_user
