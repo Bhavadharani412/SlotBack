@@ -62,7 +62,8 @@ def live_server_url() -> Generator[str, None, None]:
     # 2. Check if a custom test server URL was explicitly provided (e.g., in CI or staging)
     env_url = os.environ.get("SLOTBACK_BASE_URL")
     if env_url:
-        return env_url
+        yield env_url
+        return
 
     # 3. Otherwise, spawn an ephemeral FastAPI test server bound to a free port
     port = get_free_port()

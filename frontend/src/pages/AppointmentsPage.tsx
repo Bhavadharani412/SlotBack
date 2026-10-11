@@ -80,9 +80,14 @@ export const AppointmentsPage: React.FC = () => {
       setActionError('Please fill in all required fields.');
       return;
     }
+    const startTimeDate = new Date(`${formData.date}T${formData.time}:00`);
+    if (startTimeDate.getTime() <= Date.now()) {
+      setActionError('Booking date and time must be in the future. Past or completed slots cannot be booked.');
+      return;
+    }
     try {
       setActionLoading(true);
-      const startTime = new Date(`${formData.date}T${formData.time}:00`).toISOString();
+      const startTime = startTimeDate.toISOString();
       await api.createAppointment({
         customer_name: formData.customer_name,
         customer_email: formData.customer_email,
@@ -347,6 +352,7 @@ export const AppointmentsPage: React.FC = () => {
                 type="date"
                 className="form-input"
                 required
+                min={new Date().toISOString().split('T')[0]}
                 value={formData.date}
                 onChange={(e) => setFormData({ ...formData, date: e.target.value })}
               />
@@ -389,7 +395,7 @@ export const AppointmentsPage: React.FC = () => {
         )}
         <p style={{ marginBottom: '1rem' }}>
           Are you sure you want to cancel the booking for <strong>{selectedAppointment?.customer_name}</strong>?
-          This will release the slot and automatically search eligible waitlisted customers for recovery.
+          This frees up the slot and lets you immediately offer it to a waiting customer.
         </p>
         <div className="form-group">
           <label className="form-label">Cancellation Reason (Optional)</label>

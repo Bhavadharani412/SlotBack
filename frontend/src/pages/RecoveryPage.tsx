@@ -108,27 +108,31 @@ export const RecoveryPage: React.FC = () => {
     (app) => !offers.some((o) => o.appointment_id === app.id && o.status !== 'withdrawn' && o.status !== 'expired')
   );
 
-  // Determine eligible waitlist for selected appointment
-  const selectedAppointment = cancelledAppointments.find(a => a.id === selectedAppointmentId);
-  const eligibleWaitlist = activeWaitlist.filter(w => {
-    if (!selectedAppointment) return false;
-    if (w.service_id !== selectedAppointment.service_id) return false;
-    const prefStart = new Date(w.preferred_start_date).getTime();
-    const prefEnd = new Date(w.preferred_end_date).getTime();
-    const apptStart = new Date(selectedAppointment.start_time).getTime();
-    return prefStart <= apptStart && prefEnd >= apptStart;
-  });
+  // Synchronous candidate lookup to eliminate update lag
+  const getCandidatesForAppointment = (appId: string) => {
+    const app = cancelledAppointments.find((a) => a.id === appId);
+    if (!app) return [];
+    return activeWaitlist.filter((w) => {
+      if (w.service_id !== app.service_id) return false;
+      const prefStart = new Date(w.preferred_start_date).getTime();
+      const prefEnd = new Date(w.preferred_end_date).getTime();
+      const apptStart = new Date(app.start_time).getTime();
+      return prefStart <= apptStart && prefEnd >= apptStart;
+    });
+  };
 
-  // Keep selected waitlist ID in sync when selected appointment changes
-  useEffect(() => {
-    if (eligibleWaitlist.length > 0) {
-      if (!eligibleWaitlist.some(w => w.id === selectedWaitlistId)) {
-        setSelectedWaitlistId(eligibleWaitlist[0].id);
-      }
-    } else {
-      setSelectedWaitlistId('');
-    }
-  }, [selectedAppointmentId, eligibleWaitlist, selectedWaitlistId]);
+  const handleSelectAppointment = (appId: string) => {
+    setSelectedAppointmentId(appId);
+    const matches = getCandidatesForAppointment(appId);
+    setSelectedWaitlistId(matches[0]?.id || '');
+  };
+
+  // Determine eligible waitlist for selected appointment
+  const selectedAppointment = cancelledAppointments.find((a) => a.id === selectedAppointmentId);
+  const eligibleWaitlist = selectedAppointmentId
+    ? getCandidatesForAppointment(selectedAppointmentId)
+    : [];
+  const selectedCandidate = eligibleWaitlist.find((w) => w.id === selectedWaitlistId);
 
 
   return (
@@ -185,7 +189,7 @@ export const RecoveryPage: React.FC = () => {
                     <button
                       className="btn btn-sm btn-primary"
                       onClick={() => {
-                        setSelectedAppointmentId(slot.id);
+                        handleSelectAppointment(slot.id);
                         setIssueModalOpen(true);
                       }}
                     >
@@ -322,12 +326,12 @@ export const RecoveryPage: React.FC = () => {
         )}
         <form onSubmit={handleIssueSubmit}>
           <div className="form-group">
-            <label className="form-label">Select Released Cancelled Slot *</label>
+            <label className="form-label">Select Cancelled Slot *</label>
             <select
               className="form-select"
               required
               value={selectedAppointmentId}
-              onChange={(e) => setSelectedAppointmentId(e.target.value)}
+              onChange={(e) => handleSelectAppointment(e.target.value)}
             >
               {cancelledAppointments.map((app) => (
                 <option key={app.id} value={app.id}>
@@ -338,24 +342,62 @@ export const RecoveryPage: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label className="form-label">Select Eligible Waitlisted Customer *</label>
+            <label className="form-label">Select Waiting Customer *</label>
             {eligibleWaitlist.length > 0 ? (
-              <select
-                className="form-select"
-                required
-                value={selectedWaitlistId}
-                onChange={(e) => setSelectedWaitlistId(e.target.value)}
-              >
-                {eligibleWaitlist.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.customer_name} ({w.customer_email}) — Requested: {w.service?.name || 'Any'}
-                  </option>
-                ))}
-              </select>
+              <>
+                <select
+                  className="form-select"
+                  required
+                  value={selectedWaitlistId}
+                  onChange={(e) => setSelectedWaitlistId(e.target.value)}
+                >
+                  {eligibleWaitlist.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.customer_name} ({w.customer_email}) — Requested: {w.service?.name || 'Any'}
+                    </option>
+                  ))}
+                </select>
+
+                {selectedCandidate && (
+                  <div
+                    style={{
+                      backgroundColor: 'var(--surface-hover)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '0.875rem',
+                      marginTop: '0.75rem',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                      <strong style={{ fontSize: '0.875rem', color: 'var(--primary)' }}>
+                        Selected: {selectedCandidate.customer_name}
+                      </strong>
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          color: 'var(--success)',
+                          backgroundColor: 'var(--success-bg)',
+                          padding: '0.125rem 0.375rem',
+                          borderRadius: 'var(--radius-sm)',
+                        }}
+                      >
+                        Eligible Match
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                      Phone: {selectedCandidate.customer_phone} | Email: {selectedCandidate.customer_email}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      Preferred Window: {new Date(selectedCandidate.preferred_start_date).toLocaleDateString()} to {new Date(selectedCandidate.preferred_end_date).toLocaleDateString()}
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="alert alert-warning" style={{ marginTop: '0.5rem' }}>
                 <AlertTriangle size={16} />
-                <span>No eligible customers found for this service and time window. They may be booked or none match.</span>
+                <span>No waiting customers match this service and date range.</span>
               </div>
             )}
           </div>

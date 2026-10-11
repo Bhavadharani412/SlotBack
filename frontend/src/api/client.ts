@@ -124,6 +124,7 @@ export const api = {
     return res;
   },
   getMe: (): Promise<User> => fetchJson('/auth/me'),
+  getStaffUsers: (): Promise<User[]> => fetchJson('/auth/users'),
   createStaffUser: (data: {
     email: string;
     password: string;

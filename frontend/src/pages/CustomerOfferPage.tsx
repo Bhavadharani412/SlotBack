@@ -115,9 +115,34 @@ export const CustomerOfferPage: React.FC = () => {
           >
             SB
           </div>
-          <h1>Priority Slot Recovery Offer</h1>
-          <p>An earlier appointment slot has opened up for you!</p>
+          <h1>Earlier Appointment Opening</h1>
+          <p style={{ color: 'var(--text-muted)' }}>
+            A slot just opened up for you because you were on our waitlist!
+          </p>
         </div>
+
+        {/* First time guide banner */}
+        {!isAccepted && !isExpired && (
+          <div
+            style={{
+              backgroundColor: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: 'var(--radius-md)',
+              padding: '1rem',
+              marginBottom: '1.25rem',
+              fontSize: '0.875rem',
+              color: '#1E293B',
+            }}
+          >
+            <strong style={{ display: 'block', color: '#1D4ED8', marginBottom: '0.25rem' }}>
+              How This Works:
+            </strong>
+            <span>
+              Another customer cancelled their appointment, so this earlier time is offered to you first.
+              Review the details below and tap <strong>Accept & Claim This Appointment</strong> before the timer expires.
+            </span>
+          </div>
+        )}
 
         {/* Accepted Confirmed Screen */}
         {isAccepted ? (
@@ -139,7 +164,7 @@ export const CustomerOfferPage: React.FC = () => {
             </div>
             <h2>Offer Accepted & Booking Confirmed!</h2>
             <p style={{ marginTop: '0.5rem', marginBottom: '1.5rem', color: 'var(--text-secondary)' }}>
-              You have successfully claimed this released slot. Your appointment is officially confirmed.
+              You have claimed this appointment. Your booking is confirmed.
             </p>
 
             <div
@@ -196,7 +221,7 @@ export const CustomerOfferPage: React.FC = () => {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--warning)' }}>
                   <Clock size={18} />
-                  <strong style={{ fontSize: '0.875rem' }}>Limited-Time Recovery Offer</strong>
+                  <strong style={{ fontSize: '0.875rem' }}>Time Left to Claim</strong>
                 </div>
                 <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--warning)' }}>
                   {timeLeft || '60m 00s'}
@@ -208,7 +233,7 @@ export const CustomerOfferPage: React.FC = () => {
                 <div>
                   <strong>Offer Expired</strong>
                   <div style={{ fontSize: '0.8125rem' }}>
-                    This recovery offer expired at {new Date(offer.expires_at).toLocaleTimeString()}.
+                    This offer expired at {new Date(offer.expires_at).toLocaleTimeString()}.
                   </div>
                 </div>
               </div>
@@ -226,7 +251,7 @@ export const CustomerOfferPage: React.FC = () => {
                 {offer.appointment?.service?.name}
               </h3>
               <p className="text-muted" style={{ fontSize: '0.875rem', marginBottom: '1rem' }}>
-                {offer.appointment?.service?.description || 'Exclusive waitlist replacement slot.'}
+                {offer.appointment?.service?.description || 'Opening available from a cancelled appointment.'}
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', backgroundColor: 'var(--surface-hover)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
@@ -243,7 +268,7 @@ export const CustomerOfferPage: React.FC = () => {
                   </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '0.5rem' }}>
-                  <span className="text-muted" style={{ fontSize: '0.8125rem' }}>Waitlist Reserved For:</span>
+                  <span className="text-muted" style={{ fontSize: '0.8125rem' }}>Reserved For:</span>
                   <strong>{offer.waitlist_entry?.customer_name}</strong>
                 </div>
               </div>
@@ -255,10 +280,10 @@ export const CustomerOfferPage: React.FC = () => {
               disabled={isExpired || accepting}
               style={{ width: '100%', padding: '0.875rem', fontSize: '1rem', fontWeight: 600 }}
             >
-              {accepting ? 'Confirming Availability...' : isExpired ? 'Offer Expired' : 'Accept & Claim Slot Now'}
+              {accepting ? 'Confirming Availability...' : isExpired ? 'Offer Expired' : 'Accept & Claim This Appointment'}
             </button>
             <p className="text-muted" style={{ textAlign: 'center', fontSize: '0.75rem', marginTop: '0.75rem' }}>
-              The server will atomically validate availability and lock this slot exclusively for you.
+              We will hold and confirm this appointment for you as soon as you accept.
             </p>
           </div>
         )}

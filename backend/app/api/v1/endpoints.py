@@ -117,6 +117,23 @@ def create_staff_user(
     return new_user
 
 
+@router.get(
+    "/auth/users",
+    response_model=list[UserOut],
+    tags=["auth"],
+)
+def list_staff_users(
+    current_user: Annotated[User, Depends(require_admin)],
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(User)
+        .where(User.business_id == current_user.business_id)
+        .order_by(User.created_at.desc())
+    )
+    return list(db.scalars(stmt).all())
+
+
 # ------------------ Services ------------------
 @router.get("/services", response_model=list[ServiceOut], tags=["services"])
 def list_services(

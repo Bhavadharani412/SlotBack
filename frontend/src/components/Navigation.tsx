@@ -164,7 +164,7 @@ export const Navigation: React.FC<NavigationProps> = ({ activeOffersCount = 0 })
               })}
             >
               <UserPlus size={18} />
-              <span>Invite Staff</span>
+              <span>Staff Accounts</span>
             </NavLink>
           )}
 

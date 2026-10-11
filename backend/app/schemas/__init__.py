@@ -12,6 +12,7 @@ from backend.app.schemas.domain import (
     RecoveryOfferOut,
     ServiceCreate,
     ServiceOut,
+    ServiceUpdate,
     TokenOut,
     UserCreate,
     UserLogin,

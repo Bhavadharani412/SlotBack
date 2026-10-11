@@ -97,8 +97,42 @@ export const SignInPage: React.FC = () => {
             Staff Sign In
           </h1>
           <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            Access the SlotBack capacity recovery console
+            Sign in to manage appointments, waitlists, and slot recovery
           </p>
+        </div>
+
+        {/* Admin Setup Helper Note */}
+        <div
+          style={{
+            padding: '0.75rem 1rem',
+            backgroundColor: '#F0FDF4',
+            border: '1px solid #BBF7D0',
+            borderRadius: 'var(--radius-md)',
+            marginBottom: '1.25rem',
+            fontSize: '0.8125rem',
+            color: '#166534',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span>
+              <strong>Admin Setup:</strong> Use the admin email in <code>.env</code> to set up staff.
+            </span>
+            <button
+              type="button"
+              onClick={() => setEmail('admin@gmail.com')}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#15803D',
+                fontWeight: 700,
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+              }}
+            >
+              Fill Email
+            </button>
+          </div>
         </div>
 
         {/* Error notification banner */}
@@ -257,15 +291,15 @@ export const SignInPage: React.FC = () => {
         <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)', textAlign: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', color: 'var(--text-muted)', fontSize: '0.75rem', marginBottom: '1rem' }}>
             <ShieldCheck size={14} style={{ color: 'var(--success)' }} />
-            <span>Protected by HMAC-SHA256 JWT Authentication</span>
+            <span>Secure Staff Authentication</span>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8125rem' }}>
             <Link to="/register" style={{ color: 'var(--primary)', textDecoration: 'none', fontWeight: 500 }}>
-              Staff Invitation / Provisioning
+              Staff Accounts & Invites
             </Link>
             <Link to="/book" style={{ color: 'var(--text-muted)', textDecoration: 'none' }}>
-              Public Customer Booking →
+              Customer Booking →
             </Link>
           </div>
         </div>

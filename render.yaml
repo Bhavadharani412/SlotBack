@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: slotback
+    env: docker
+    dockerfilePath: Dockerfile
+    plan: standard
+    healthCheckPath: /health/ready
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: slotback-db
+          property: connectionString
+      - key: INITIAL_ADMIN_EMAIL
+        value: admin@gmail.com
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://slotback.onrender.com
+      - key: LOG_LEVEL
+        value: INFO
+
+databases:
+  - name: slotback-db
+    databaseName: slotback
+    user: slotback
+    plan: standard

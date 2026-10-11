@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     secret_key: str = "slotback-insecure-dev-secret-key-change-in-production-min32chars"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
-    initial_admin_email: str = "admin@slotback.com"
-    initial_admin_password: str = "Admin@SlotBack2026!"
+    initial_admin_email: str = "admin@gmail.com"
+    initial_admin_password: str = ""
 
     # Email / Notification Provider
     smtp_host: str = ""

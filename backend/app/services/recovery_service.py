@@ -89,12 +89,33 @@ class SlotBackService:
                 stmt = stmt.where(func.date(Appointment.start_time) == target_date)
             except ValueError:
                 pass
-        return list(self.db.scalars(stmt.order_by(Appointment.start_time.desc())).all())
+        appointments = list(self.db.scalars(stmt.order_by(Appointment.start_time.desc())).all())
+        now = utc_now()
+        updated_any = False
+        for appt in appointments:
+            if appt.status == "scheduled" and appt.end_time < now:
+                appt.status = "completed"
+                self.db.add(appt)
+                updated_any = True
+        if updated_any:
+            self.db.commit()
+        return appointments
 
     def create_appointment(self, data: AppointmentCreate, is_recovery: bool = False) -> Appointment:
         service = self.db.get(Service, data.service_id)
         if not service:
             raise HTTPException(status_code=404, detail="Service not found")
+
+        start_utc = (
+            data.start_time
+            if data.start_time.tzinfo
+            else data.start_time.replace(tzinfo=UTC)
+        )
+        if start_utc < utc_now() - timedelta(minutes=1):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Appointment start time cannot be in the past or already completed. Please select an upcoming slot.",
+            )
 
         end_time = data.start_time + timedelta(minutes=service.duration_minutes)
 

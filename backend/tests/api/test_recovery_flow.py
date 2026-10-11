@@ -339,3 +339,34 @@ def test_overlapping_booking_conflict_prevention():
     )
     assert res2.status_code == 409
     assert "already booked" in res2.json()["detail"].lower()
+
+
+def test_cannot_book_appointment_in_the_past():
+    """Regression test: Bookings cannot contain completed time or past dates."""
+    # 1. Create a service
+    res = client.post(
+        "/api/v1/services",
+        json={
+            "name": "Past Time Test Service",
+            "duration_minutes": 45,
+            "price": 75.0,
+        },
+    )
+    assert res.status_code == 201
+    svc_id = res.json()["id"]
+
+    # 2. Try to book with past start_time (-120 minutes)
+    past_time = utc_now_iso(-120)
+    res_past = client.post(
+        "/api/v1/appointments",
+        json={
+            "customer_name": "Past Customer",
+            "customer_email": "past@example.com",
+            "customer_phone": "555-0999",
+            "service_id": svc_id,
+            "start_time": past_time,
+        },
+    )
+    assert res_past.status_code in (400, 422)
+    detail_str = str(res_past.json()).lower()
+    assert "past" in detail_str or "completed" in detail_str

@@ -76,7 +76,7 @@ export const OverviewPage: React.FC = () => {
       <div className="page-header">
         <div>
           <h1>Staff Operational Dashboard</h1>
-          <p>Monitor released slot recovery, active waitlists, and notification health.</p>
+          <p>Track cancelled slots, waitlist members, and sent offers.</p>
         </div>
         <div className="page-header-actions">
           <button className="btn btn-secondary" onClick={loadData}>
@@ -91,30 +91,30 @@ export const OverviewPage: React.FC = () => {
       {/* Metrics Bar */}
       <div className="metrics-grid">
         <div className="metric-card">
-          <span className="metric-title">Eligible Cancellations</span>
+          <span className="metric-title">Cancelled Slots</span>
           <span className="metric-value">{metrics?.eligible_cancellations ?? 0}</span>
-          <span className="metric-subtitle">Released slots requiring recovery</span>
+          <span className="metric-subtitle">Open slots to refill</span>
         </div>
         <div className="metric-card">
-          <span className="metric-title">Recovered Bookings</span>
+          <span className="metric-title">Filled Slots</span>
           <span className="metric-value" style={{ color: 'var(--success)' }}>
             {metrics?.recovered_appointments ?? 0}
           </span>
-          <span className="metric-subtitle">Safely confirmed from waitlist</span>
+          <span className="metric-subtitle">Claimed from waitlist</span>
         </div>
         <div className="metric-card">
-          <span className="metric-title">Recovery Rate</span>
+          <span className="metric-title">Refill Rate</span>
           <span className="metric-value" style={{ color: 'var(--primary)' }}>
             {metrics?.recovery_rate ?? 0}%
           </span>
-          <span className="metric-subtitle">Recovered / Eligible cancellations</span>
+          <span className="metric-subtitle">Filled vs cancelled slots</span>
         </div>
         <div className="metric-card">
           <span className="metric-title">Time to Refill</span>
           <span className="metric-value">
             {metrics?.time_to_refill_median_minutes !== null ? `${metrics?.time_to_refill_median_minutes}m` : 'N/A'}
           </span>
-          <span className="metric-subtitle">Median cancellation-to-confirm time</span>
+          <span className="metric-subtitle">Average time to fill a slot</span>
         </div>
       </div>
 
@@ -124,12 +124,12 @@ export const OverviewPage: React.FC = () => {
           <AlertTriangle size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
           <div style={{ flex: 1 }}>
             <strong style={{ display: 'block', marginBottom: '0.25rem' }}>
-              {notificationFailures.length} Notification Delivery Failure(s) Detected
+              {notificationFailures.length} Notification Delivery Issue(s)
             </strong>
-            <span>Offer notifications failed to deliver to waitlisted customers. Retry delivery to avoid lost recovery.</span>
+            <span>Offer messages could not be sent to waiting customers. Retry sending to avoid losing the slot.</span>
           </div>
           <Link to="/recovery" className="btn btn-sm btn-secondary">
-            Resolve Issues <ArrowRight size={14} />
+            Fix Issues <ArrowRight size={14} />
           </Link>
         </div>
       )}
@@ -140,12 +140,12 @@ export const OverviewPage: React.FC = () => {
           <div className="card-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <AlertTriangle size={18} color="var(--danger)" />
-              <h3>Cancellations Needing Attention ({urgentCancellations.length})</h3>
+              <h3>Cancelled Slots to Fill ({urgentCancellations.length})</h3>
             </div>
             <Link to="/recovery" className="btn btn-ghost btn-sm">View All</Link>
           </div>
           {urgentCancellations.length === 0 ? (
-            <p className="text-muted" style={{ padding: '1rem 0' }}>No pending unrecovered cancellations.</p>
+            <p className="text-muted" style={{ padding: '1rem 0' }}>All cancelled slots have been refilled or have offers sent.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {urgentCancellations.slice(0, 4).map((app) => (
@@ -170,7 +170,7 @@ export const OverviewPage: React.FC = () => {
                     </span>
                   </div>
                   <Link to={`/recovery?appointment=${app.id}`} className="btn btn-sm btn-primary">
-                    Match Waitlist
+                    Find Waiting Customer
                   </Link>
                 </div>
               ))}
@@ -183,12 +183,12 @@ export const OverviewPage: React.FC = () => {
           <div className="card-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Send size={18} color="var(--primary)" />
-              <h3>Active Recovery Offers ({activeOffers.length})</h3>
+              <h3>Sent Offers Pending Reply ({activeOffers.length})</h3>
             </div>
             <Link to="/recovery" className="btn btn-ghost btn-sm">Manage</Link>
           </div>
           {activeOffers.length === 0 ? (
-            <p className="text-muted" style={{ padding: '1rem 0' }}>No active recovery offers currently pending customer response.</p>
+            <p className="text-muted" style={{ padding: '1rem 0' }}>No active offers currently awaiting customer confirmation.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {activeOffers.slice(0, 4).map((offer) => (

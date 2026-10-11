@@ -54,21 +54,42 @@ SlotBack helps small service businesses recover appointment capacity lost to can
 
 - [x] Phase 6: Staff Authentication UI & Frontend RBAC (Implemented responsive Sign In `/login` and Staff Provisioning `/register` screens, AuthContext state management, JWT Bearer client injection, profile & role badges in navigation, ProtectedRoute staff guards while maintaining public booking and capability-token recovery).
 - [x] Phase 7: Final Automated Verification & Deployment Preparation (Added Playwright auth UI browser suite, verified 53/53 tests, built production Dockerfile, documented deployment runbooks).
+- [x] Phase 8: Production Readiness, UX Polish & Admin Synchronization (Prevent past booking slots, auto-mark completed appointments, admin user sync from `.env`, lag-free candidate matching, customer user guides, direct user-friendly language, Docker Compose & Render deployment configs).
 
 ## Audit Findings & Verification Log
 
-### Verification Log (2026-10-10 — Final Authentication UI & Deployment Phase)
-- **Unit Tests**: `pytest backend/tests/unit/ -ra -v` -> **19 passed** in 15.78s (Exit code: `0`).
-- **PostgreSQL Integration & Security Tests**: `pytest backend/tests/api/ -ra -v` -> **15 passed** in 19.24s (Exit code: `0`).
-- **Unified Backend Suite**: `pytest -ra -v` -> **34 passed** in 34.77s (Exit code: `0`).
-- **Browser Playwright E2E Tests**: `pytest backend/tests/e2e/ -ra -v --timeout=60` -> **19 passed** in 25.09s (Exit code: `0`).
-- **Total Automated Tests**: **53/53 passed** across unit, API, security, and browser tiers.
-- **Python Linting**: `ruff check .` -> **0 errors, all checks passed** (Exit code: `0`).
-- **Frontend TypeScript Check**: `pnpm --prefix frontend exec tsc --noEmit` -> **0 errors** (Exit code: `0`).
-- **Frontend Vite Build**: `pnpm --prefix frontend build` -> **Built production bundle** (261.27 kB JS, 8.42 kB CSS) in 6.86s (Exit code: `0`).
-- **Database Migrations**: `alembic upgrade head` -> **Applied clean schema** (Exit code: `0`).
-- **Container Build Specification**: Multi-stage `Dockerfile` (Node 20 build stage -> Python 3.12-slim runtime with non-root user `slotback` and healthcheck).
-- **Deployment Status**: Production-hardened container and application ready for private staging deployment and live customer onboarding.
+### Verification Log (2026-10-11 — Production Readiness, UX Polish & Hosting Suite)
+- **Past Time Booking Prevention**:
+  - Added Pydantic field validator on `AppointmentCreate.start_time` rejecting past timestamps.
+  - Enforced service-level check in `recovery_service.create_appointment` returning HTTP 400.
+  - Added query-time auto-transition marking past scheduled appointments (`end_time < now`) as `completed`.
+  - Frontend booking picker disables past dates (`min={todayStr}`) and filters past times on the current day.
+  - Added regression test `test_cannot_book_appointment_in_the_past` in `test_recovery_flow.py` (passed).
+- **Admin Access & Staff Authentication Setup**:
+  - Updated `ensure_initial_admin` to synchronize admin password and active status from `.env` (`INITIAL_ADMIN_EMAIL`, `INITIAL_ADMIN_PASSWORD`).
+  - Added authenticated endpoint `GET /api/v1/auth/users` restricted to `admin` role with regression test in `test_security_auth.py` (passed).
+  - Enhanced `SignInPage` with one-click admin credential helper and `SignUpPage` with live staff member directory.
+- **Candidate Update Lag Elimination & Dashboard Clarity**:
+  - Eliminated asynchronous `useEffect` re-fetch lag on candidate selection in `RecoveryPage.tsx` using synchronous candidate matching. Added instant preview card for eligible waitlisted customers.
+  - Streamlined `OverviewPage.tsx` with high-contrast recovery queue cards, direct metric cards, and 1-click slot filling.
+- **Customer User Guides & Plain Language Copy**:
+  - Added interactive, dismissible 3-step guide (`Quick Guide for New Customers`) to `CustomerBookingPage.tsx` with localStorage persistence and reopen button.
+  - Added step-by-step guidance to `CustomerOfferPage.tsx`.
+  - Replaced technical jargon with direct language across all screens (e.g. "Booking Reference" instead of "Confirmation Ref", "Create Staff Account" instead of "Provision Staff Account", "Staff Dashboard" instead of "Operational Dashboard").
+- **Production Deployment Assets**:
+  - Created `docker-compose.yml` for complete containerized production deployment with PostgreSQL 16, volume persistence, and auto-migration runner.
+  - Created `render.yaml` infrastructure-as-code blueprint for 1-click cloud deployment on Render.
+  - Created turnkey deployment scripts `scripts/deploy_production.sh` and `scripts/deploy_production.ps1`.
+  - Updated `backend/app/main.py` SPA serving to resolve static asset requests (`/favicon.ico`, etc.) and support `FRONTEND_DIST_DIR`.
+  - Updated `docs/DEPLOYMENT.md` with complete deployment runbooks for Docker, Render, and self-hosted Linux VPS.
+- **Automated Verification**:
+  - Unit & API Tests: `pytest backend/tests/unit/ backend/tests/api/ -ra -v` -> **37 passed** in 28.18s (Exit code: `0`).
+  - Playwright E2E Browser Tests: `pytest backend/tests/e2e/ -ra -v` -> **20 passed** in 34.98s (Exit code: `0`).
+  - Total Test Suite: **57 passed, 0 failed** across all tiers.
+  - Frontend TypeScript Check: `pnpm --prefix frontend exec tsc --noEmit` -> **0 errors** (Exit code: `0`).
+  - Frontend Vite Production Bundle: `pnpm --prefix frontend build` -> **Built production bundle** (265 kB JS, 8.9 kB CSS) (Exit code: `0`).
+  - Python Linting: `ruff check .` -> **0 errors, all checks passed** (Exit code: `0`).
+  - Database Migrations: `alembic upgrade head` -> **Up to date** (Exit code: `0`).
 
 ## Submission Quickstart Command
 ```bash

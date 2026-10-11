@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class ServiceBase(BaseModel):
@@ -38,7 +38,16 @@ class AppointmentBase(BaseModel):
 
 
 class AppointmentCreate(AppointmentBase):
-    pass
+    @field_validator("start_time")
+    @classmethod
+    def validate_start_time_not_past(cls, v: datetime) -> datetime:
+        now = datetime.now(UTC)
+        v_utc = v if v.tzinfo else v.replace(tzinfo=UTC)
+        if v_utc < now - timedelta(minutes=1):
+            raise ValueError(
+                "Appointment start time cannot be in the past or already completed. Please select an upcoming slot."
+            )
+        return v
 
 
 class AppointmentCancel(BaseModel):

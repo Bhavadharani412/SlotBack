@@ -85,7 +85,10 @@ app.include_router(api_v1_router, prefix=settings.api_v1_prefix)
 
 
 # Serve Static Frontend if built
-dist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
+dist_dir = os.environ.get(
+    "FRONTEND_DIST_DIR",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")),
+)
 assets_dir = os.path.join(dist_dir, "assets")
 
 if os.path.exists(assets_dir):
@@ -94,11 +97,15 @@ if os.path.exists(assets_dir):
 
 @app.get("/{full_path:path}", include_in_schema=False)
 async def serve_spa(request: Request, full_path: str):
+    if full_path:
+        requested_file = os.path.join(dist_dir, full_path)
+        if os.path.isfile(requested_file):
+            return FileResponse(requested_file)
     index_path = os.path.join(dist_dir, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return {
         "message": "SlotBack API",
         "docs": "/docs",
-        "detail": "Frontend dist build not found. Run 'npx pnpm build' inside frontend directory.",
+        "detail": "Frontend dist build not found. Run 'pnpm --prefix frontend build' to compile the React SPA.",
     }

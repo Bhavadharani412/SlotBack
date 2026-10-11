@@ -17,6 +17,8 @@ All environment variables must be declared prior to starting the production inst
 | `DEBUG` | FastAPI debug mode | Must be `false` (enforced at startup) |
 | `SECRET_KEY` | JWT HMAC-SHA256 signing secret | Minimum 32 characters, high-entropy random string |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql+psycopg://<user>:<pass>@<host>:5432/<db>` |
+| `INITIAL_ADMIN_EMAIL` | Email for the first administrator, created only when no users exist | Set to the administrator's email |
+| `INITIAL_ADMIN_PASSWORD` | Password for the first administrator | Required when seeding the first admin; use a unique secret |
 | `CORS_ORIGINS` | Permitted browser origins | Explicit URLs (e.g. `https://slotback.example.com`). Wildcards forbidden. |
 | `LOG_LEVEL` | Logging verbosity | `INFO` or `WARNING` |
 | `SMTP_HOST` | Outbound mail server | Optional (falls back to structured dev logs if empty) |
@@ -149,4 +151,3 @@ docker run -d \
   -e CORS_ORIGINS="https://app.slotback.com" \
   slotback:latest
 ```
-

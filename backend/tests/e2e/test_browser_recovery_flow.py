@@ -13,6 +13,7 @@ Run:
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from backend.app.core.config import settings as app_settings
 from backend.tests.conftest import TestingSessionLocal
 from playwright.sync_api import Page, expect
 from sqlalchemy import text
@@ -48,7 +49,10 @@ def seed_data(live_server_url: str):
     # Authenticate to obtain token for staff API calls
     login_res = httpx.post(
         f"{api}/auth/login",
-        json={"email": "admin@slotback.com", "password": "Admin@SlotBack2026!"},
+        json={
+            "email": app_settings.initial_admin_email,
+            "password": app_settings.initial_admin_password,
+        },
     )
     auth_token = login_res.json()["access_token"]
     auth_headers = {"Authorization": f"Bearer {auth_token}"}
@@ -123,8 +127,9 @@ def seed_data(live_server_url: str):
 
 
 @pytest.fixture(autouse=True)
-def inject_staff_auth_token(request, page: Page, seed_data: dict):
+def inject_staff_auth_token(request, page: Page):
     if "TestAuthenticationUI" not in request.node.nodeid:
+        seed_data = request.getfixturevalue("seed_data")
         token = seed_data["auth_token"]
         page.add_init_script(f"localStorage.setItem('slotback_token', '{token}');")
 
@@ -286,6 +291,14 @@ class TestEmptyAndErrorStates:
 class TestAuthenticationUI:
     """E2E browser tests for staff sign-in, invalid credentials, sign-out, and public bypass."""
 
+    def test_login_email_field_uses_branded_focus_outline(
+        self, page: Page, live_server_url: str
+    ):
+        page.goto(live_server_url + "/login")
+        email = page.locator("#email-input")
+        expect(email).to_have_css("outline-style", "none")
+        expect(email).to_have_css("border-color", "rgb(49, 87, 213)")
+
     def test_unauthenticated_user_redirected_to_login(self, page: Page, live_server_url: str):
         page.goto(live_server_url + "/appointments")
         page.wait_for_url("**/login")
@@ -293,15 +306,15 @@ class TestAuthenticationUI:
 
     def test_invalid_credentials_shows_error_alert(self, page: Page, live_server_url: str):
         page.goto(live_server_url + "/login")
-        page.fill("#email-input", "admin@slotback.com")
+        page.fill("#email-input", app_settings.initial_admin_email)
         page.fill("#password-input", "IncorrectPassword123!")
         page.click("button[type='submit']")
         expect(page.locator("[role='alert']")).to_be_visible()
 
     def test_valid_credentials_signs_in_and_redirects(self, page: Page, live_server_url: str):
         page.goto(live_server_url + "/login")
-        page.fill("#email-input", "admin@slotback.com")
-        page.fill("#password-input", "Admin@SlotBack2026!")
+        page.fill("#email-input", app_settings.initial_admin_email)
+        page.fill("#password-input", app_settings.initial_admin_password)
         page.click("button[type='submit']")
         page.wait_for_url(live_server_url + "/")
         expect(page.get_by_role("heading", name="Staff Operational Dashboard")).to_be_visible()

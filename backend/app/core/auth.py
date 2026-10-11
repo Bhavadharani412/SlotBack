@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 
 from backend.app.core.config import settings
-from backend.app.core.security import decode_access_token, hash_password
+from backend.app.core.security import decode_access_token, hash_password, verify_password
 from backend.app.db.session import get_db
 from backend.app.models.domain import User
 from fastapi import Depends, HTTPException, status
@@ -90,9 +90,19 @@ def require_admin(current_user: Annotated[User, Depends(get_current_user)]) -> U
 
 
 def ensure_initial_admin(db: Session) -> User | None:
-    """Seed initial administrative staff member if database has zero users."""
-    user_count = db.scalar(select(func.count(User.id))) or 0
-    if user_count == 0:
+    """Ensure the configured initial administrator from environment exists with active admin role."""
+    if not settings.initial_admin_email:
+        return None
+
+    admin_user = db.scalar(select(User).where(User.email == settings.initial_admin_email))
+    if not admin_user:
+        if not settings.initial_admin_password:
+            user_count = db.scalar(select(func.count(User.id))) or 0
+            if user_count == 0:
+                raise RuntimeError(
+                    "INITIAL_ADMIN_PASSWORD must be configured before creating the initial admin."
+                )
+            return None
         admin_user = User(
             email=settings.initial_admin_email,
             hashed_password=hash_password(settings.initial_admin_password),
@@ -109,4 +119,18 @@ def ensure_initial_admin(db: Session) -> User | None:
             settings.initial_admin_email,
         )
         return admin_user
-    return None
+
+    # If the admin user exists, synchronize password and ensure active admin role
+    if settings.initial_admin_password and not verify_password(
+        settings.initial_admin_password, admin_user.hashed_password
+    ):
+        admin_user.hashed_password = hash_password(settings.initial_admin_password)
+        admin_user.role = "admin"
+        admin_user.is_active = True
+        db.commit()
+        db.refresh(admin_user)
+        logger.info(
+            "Synchronized initial administrator credentials from environment for: %s",
+            settings.initial_admin_email,
+        )
+    return admin_user

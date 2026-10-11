@@ -26,9 +26,31 @@ export const SignUpPage: React.FC = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
+  const [staffUsers, setStaffUsers] = useState<any[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const loadStaffUsers = async () => {
+    if (!isAdmin) return;
+    try {
+      setLoadingUsers(true);
+      const users = await api.getStaffUsers();
+      setStaffUsers(users);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (isAdmin) {
+      loadStaffUsers();
+    }
+  }, [isAdmin]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -61,13 +83,14 @@ export const SignUpPage: React.FC = () => {
         role,
         password,
       });
-      setSuccess(`Successfully created account for ${created.full_name} (${created.email}) with ${created.role} privileges.`);
+      setSuccess(`Successfully created account for ${created.full_name} (${created.email}) with ${created.role} role.`);
       setFullName('');
       setEmail('');
       setPassword('');
       setConfirmPassword('');
+      loadStaffUsers();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to provision staff account. Please verify details and try again.';
+      const msg = err instanceof Error ? err.message : 'Failed to create staff account. Please verify details and try again.';
       setError(msg);
     } finally {
       setIsSubmitting(false);
@@ -90,7 +113,7 @@ export const SignUpPage: React.FC = () => {
         className="card"
         style={{
           width: '100%',
-          maxWidth: '520px',
+          maxWidth: '560px',
           padding: '2.5rem',
           boxShadow: 'var(--shadow-lg)',
           borderRadius: 'var(--radius-lg)',
@@ -135,10 +158,10 @@ export const SignUpPage: React.FC = () => {
             <UserPlus size={24} />
           </div>
           <h1 style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.375rem' }}>
-            Staff Invitation & Provisioning
+            Staff Accounts & Setup
           </h1>
           <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-            Provision authorized personnel accounts under SlotBack
+            Create and manage staff and admin access
           </p>
         </div>
 
@@ -155,10 +178,10 @@ export const SignUpPage: React.FC = () => {
           >
             <ShieldAlert size={36} style={{ color: 'var(--info)', margin: '0 auto 0.75rem' }} />
             <h3 style={{ fontSize: '1.0625rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
-              Administrator Authorization Required
+              Admin Sign In Required
             </h3>
             <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '1.25rem' }}>
-              SlotBack enforces strict tenant boundaries. To prevent unauthorized access, staff accounts must be provisioned by an authenticated business administrator. Unrestricted public registration is disabled.
+              Only business administrators can set up staff accounts. Sign in using the admin account configured in your <code>.env</code> file.
             </p>
             <Link
               to="/login"
@@ -399,21 +422,83 @@ export const SignUpPage: React.FC = () => {
               }}
             >
               {isSubmitting ? (
-                <span>Provisioning Account...</span>
+                <span>Creating Account...</span>
               ) : (
                 <>
                   <UserPlus size={16} />
-                  <span>Provision Staff Account</span>
+                  <span>Create Staff Account</span>
                 </>
               )}
             </button>
           </form>
         )}
 
-        <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)', textAlign: 'center' }}>
+        {/* Existing staff accounts list */}
+        {isAdmin && (
+          <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.75rem' }}>
+              Current Accounts ({staffUsers.length})
+            </h3>
+            {loadingUsers ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>Loading accounts...</div>
+            ) : staffUsers.length === 0 ? (
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>No staff accounts created yet.</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {staffUsers.map((u) => (
+                  <div
+                    key={u.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.625rem 0.75rem',
+                      backgroundColor: 'var(--surface-hover)',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-color)',
+                      fontSize: '0.8125rem',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ display: 'block', color: 'var(--text-primary)' }}>{u.full_name}</strong>
+                      <span className="text-muted">{u.email}</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span
+                        style={{
+                          backgroundColor: u.role === 'admin' ? 'var(--primary-light)' : 'var(--surface)',
+                          color: u.role === 'admin' ? 'var(--primary)' : 'var(--text-secondary)',
+                          border: '1px solid var(--border-color)',
+                          fontSize: '0.75rem',
+                          padding: '0.125rem 0.5rem',
+                          borderRadius: 'var(--radius-sm)',
+                          fontWeight: 600,
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {u.role}
+                      </span>
+                      <span
+                        style={{
+                          color: 'var(--success)',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        Active
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)', textAlign: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
             <ShieldCheck size={14} style={{ color: 'var(--success)' }} />
-            <span>Authorized Administrator Control Plane</span>
+            <span>Administrator Controls</span>
           </div>
         </div>
       </div>

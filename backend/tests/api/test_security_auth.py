@@ -1,9 +1,12 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from backend.app.core.config import Settings
+from backend.app.core.auth import ensure_initial_admin
+from backend.app.core.config import Settings, settings
 from backend.app.core.security import create_access_token
 from backend.app.main import app
+from backend.app.models.domain import User
+from backend.tests.conftest import TestingSessionLocal
 from fastapi.testclient import TestClient
 
 client = TestClient(app)
@@ -20,6 +23,17 @@ def test_anonymous_requests_cannot_access_staff_endpoints():
     assert client.get("/api/v1/auth/me").status_code == 401
     assert client.post("/api/v1/appointments/any-id/cancel", json={}).status_code == 401
     assert client.post("/api/v1/recovery/offers", json={"appointment_id": "1", "waitlist_id": "1"}).status_code == 401
+
+
+def test_initial_admin_requires_configured_password(monkeypatch):
+    monkeypatch.setattr(settings, "initial_admin_password", "")
+    with TestingSessionLocal() as session:
+        session.query(User).delete()
+        session.flush()
+        with pytest.raises(RuntimeError, match="INITIAL_ADMIN_PASSWORD must be configured"):
+            ensure_initial_admin(session)
+        session.rollback()
+        assert session.query(User).count() == 1
 
 
 def test_public_customer_flows_work_without_authentication(admin_headers):
@@ -70,7 +84,7 @@ def test_staff_login_and_permitted_operations(admin_headers, staff_headers):
     # Login via /auth/login
     login_res = client.post(
         "/api/v1/auth/login",
-        json={"email": "admin@slotback.com", "password": "Admin@SlotBack2026!"},
+        json={"email": settings.initial_admin_email, "password": settings.initial_admin_password},
     )
     assert login_res.status_code == 200
     data = login_res.json()
@@ -308,3 +322,20 @@ def test_bounded_notification_retries(admin_headers):
     res_exceeded = client.post(f"/api/v1/recovery/notifications/{notif_id}/retry", headers=admin_headers)
     assert res_exceeded.status_code == 400
     assert "Maximum notification retry limit (3) exceeded" in res_exceeded.json()["detail"]
+
+
+def test_admin_can_list_staff_users_and_staff_cannot(
+    admin_headers: dict[str, str], staff_headers: dict[str, str]
+):
+    """Admin can list staff members to set up auth, but regular staff cannot."""
+    # 1. Staff cannot list users (403)
+    res_staff = client.get("/api/v1/auth/users", headers=staff_headers)
+    assert res_staff.status_code == 403
+
+    # 2. Admin can list users (200)
+    res_admin = client.get("/api/v1/auth/users", headers=admin_headers)
+    assert res_admin.status_code == 200
+    users = res_admin.json()
+    assert isinstance(users, list)
+    assert len(users) >= 1
+    assert any(u["role"] == "admin" for u in users)

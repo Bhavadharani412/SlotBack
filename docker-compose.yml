@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: slotback-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: slotback
+      POSTGRES_USER: slotback
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-slotback_prod_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U slotback -d slotback"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: slotback-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_NAME: "SlotBack API"
+      APP_ENV: "production"
+      DEBUG: "false"
+      SECRET_KEY: ${SECRET_KEY:-slotback-production-secret-key-at-least-32-chars-long-minimum}
+      DATABASE_URL: postgresql+psycopg://slotback:${POSTGRES_PASSWORD:-slotback_prod_password}@db:5432/slotback
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-admin@gmail.com}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-987651230asdfghqwerty}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8000,http://localhost:5173}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-notifications@slotback.com}
+    ports:
+      - "${PORT:-8000}:8000"
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers --forwarded-allow-ips=*"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/health/ready || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  postgres_data:
